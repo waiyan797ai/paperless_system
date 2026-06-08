@@ -24,4 +24,14 @@ class UpdatePolicyRequest extends FormRequest
             'file' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'file.file' => 'The uploaded file is invalid.',
+            'file.mimes' => 'Only PDF files are allowed.',
+            'file.max' => 'The PDF may not be larger than 10 MB.',
+            'file.uploaded' => 'The file failed to upload. It may exceed the server limit (2 MB by default). Restart the backend with: cd backend && ./serve.sh',
+        ];
+    }
 }

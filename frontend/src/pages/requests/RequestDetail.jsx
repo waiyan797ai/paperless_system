@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle, XCircle, RotateCcw, UserPlus, ArrowRightToLine, Users } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
@@ -12,7 +13,9 @@ import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
 import { hasPermission, hasRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
+import { useFormRequestDetail, useInvalidateFormRequests } from '../../hooks/useFormRequests'
 import { useToast } from '../../components/ui/Toast'
+import { queryKeys } from '../../lib/queryKeys'
 
 const actionLabels = {
   submitted: 'Submitted',
@@ -43,8 +46,9 @@ export default function RequestDetail() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { addToast } = useToast()
-  const [request, setRequest] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const invalidateFormRequests = useInvalidateFormRequests()
+  const { data: request, isLoading: loading, isError, isFetching, refetch } = useFormRequestDetail(id)
   const [actionLoading, setActionLoading] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
@@ -59,18 +63,18 @@ export default function RequestDetail() {
   const [sections, setSections] = useState([])
   const [forwardSectionId, setForwardSectionId] = useState('')
 
-  const loadRequest = () => {
-    return api.get(`/form-requests/${id}`).then(({ data }) => setRequest(data.data))
-  }
-
   useEffect(() => {
-    loadRequest()
-      .catch(() => {
-        addToast('Request not found', 'error')
-        navigate('/requests')
-      })
-      .finally(() => setLoading(false))
-  }, [id, navigate, addToast])
+    if (isError) {
+      addToast('Request not found', 'error')
+      navigate('/requests')
+    }
+  }, [isError, navigate, addToast])
+
+  const refreshRequest = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.formRequest(id) })
+    await invalidateFormRequests()
+    await refetch()
+  }
 
   const isOwner = request?.user_id === user?.id
   const isAssignee = request?.assigned_to_id === user?.id
@@ -171,7 +175,7 @@ export default function RequestDetail() {
       })
       addToast('Request assigned', 'success')
       setAssignOpen(false)
-      await loadRequest()
+      await refreshRequest()
     } catch (err) {
       addToast(err.response?.data?.message || 'Assign failed', 'error')
     } finally {
@@ -185,7 +189,7 @@ export default function RequestDetail() {
       await api.put(`/form-requests/${id}/cc`, { user_ids: selectedCcIds })
       addToast('CC users updated', 'success')
       setCcOpen(false)
-      await loadRequest()
+      await refreshRequest()
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to update CC', 'error')
     } finally {
@@ -206,7 +210,7 @@ export default function RequestDetail() {
       await api.post(`/form-requests/${id}/forward-section`, { target_section_id: forwardSectionId })
       addToast('Request forwarded to section', 'success')
       setForwardOpen(false)
-      await loadRequest()
+      await refreshRequest()
     } catch (err) {
       addToast(err.response?.data?.message || 'Forward failed', 'error')
     } finally {
@@ -229,7 +233,7 @@ export default function RequestDetail() {
       addToast(msg, 'success')
       setActionOpen(null)
       setRemark('')
-      await loadRequest()
+      await refreshRequest()
     } catch (err) {
       addToast(err.response?.data?.message || 'Action failed', 'error')
     } finally {
@@ -242,7 +246,7 @@ export default function RequestDetail() {
     try {
       await api.post(`/form-requests/${id}/submit`)
       addToast('Request submitted', 'success')
-      await loadRequest()
+      await refreshRequest()
     } catch (err) {
       addToast(err.response?.data?.message || 'Submit failed', 'error')
     } finally {
@@ -269,7 +273,14 @@ export default function RequestDetail() {
 
       <PageHeader
         title={request.title}
-        subtitle={request.reference_no}
+        subtitle={
+          <span className="flex items-center gap-2">
+            {request.reference_no}
+            {isFetching && !loading && (
+              <span className="text-xs text-[var(--text-muted)]">Updating...</span>
+            )}
+          </span>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {canEdit && (

@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, Trash2 } from 'lucide-react'
+import { Bell, CheckCheck } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { cn } from '../../lib/utils'
 
 export default function Notifications() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification } = useNotifications()
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
   const [activeTab, setActiveTab] = useState('all')
 
   const tabs = [
@@ -55,16 +55,11 @@ export default function Notifications() {
                   <p className="text-sm text-[var(--text-muted)] mt-1">{n.message}</p>
                   <p className="text-xs text-[var(--text-muted)] mt-2">{formatRelativeTime(n.createdAt)}</p>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  {!n.read && (
-                    <Button variant="ghost" size="icon" onClick={() => markAsRead(n.id)} title="Mark as read">
-                      <CheckCheck className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon" onClick={() => removeNotification(n.id)} title="Remove">
-                    <Trash2 className="h-4 w-4" />
+                {!n.read && (
+                  <Button variant="ghost" size="icon" onClick={() => markAsRead(n.id)} title="Mark as read">
+                    <CheckCheck className="h-4 w-4" />
                   </Button>
-                </div>
+                )}
               </div>
             ))}
           </div>

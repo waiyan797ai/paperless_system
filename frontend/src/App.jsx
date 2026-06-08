@@ -37,7 +37,7 @@ import InterRequestForm from './pages/inter-requests/InterRequestForm'
 import InterRequestDetail from './pages/inter-requests/InterRequestDetail'
 
 import Documents from './pages/documents/Documents'
-import DocumentForm from './pages/documents/DocumentForm'
+import DocumentDetail from './pages/documents/DocumentDetail'
 import DocumentDistribution from './pages/documents/DocumentDistribution'
 
 import Notifications from './pages/notifications/Notifications'
@@ -89,8 +89,8 @@ function AppRoutes() {
           <Route path="/inter-requests/:id" element={<ProtectedRoute roles={['admin', 'department', 'section']}><InterRequestDetail /></ProtectedRoute>} />
 
           <Route path="/documents" element={<Documents />} />
-          <Route path="/documents/new" element={<DocumentForm />} />
           <Route path="/documents/distribution" element={<ProtectedRoute roles={['admin', 'department']}><DocumentDistribution /></ProtectedRoute>} />
+          <Route path="/documents/:id" element={<DocumentDetail />} />
 
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/audit-logs" element={<ProtectedRoute roles={['admin']}><AuditLogs /></ProtectedRoute>} />

@@ -18,7 +18,13 @@ class RequestWorkflowService
     public function __construct(
         protected AuditService $auditService,
         protected NotificationService $notificationService,
+        protected RealtimeService $realtimeService,
     ) {}
+
+    protected function broadcastUpdate(FormRequest $formRequest): void
+    {
+        $this->realtimeService->bumpForFormRequest($formRequest);
+    }
 
     public function generateReferenceNo(): string
     {
@@ -47,7 +53,10 @@ class RequestWorkflowService
                 $this->auditService->log(AuditAction::Submitted, $formRequest);
                 $this->notifyUser($formRequest->assignedTo, 'Request Resubmitted', "Request \"{$formRequest->title}\" has been resubmitted.");
 
-                return $formRequest->fresh($this->defaultRelations());
+                $updated = $formRequest->fresh($this->defaultRelations());
+                $this->broadcastUpdate($updated);
+
+                return $updated;
             }
 
             $reviewDepartmentId = $this->resolveInitialReviewDepartment($formRequest);
@@ -69,7 +78,10 @@ class RequestWorkflowService
             $this->auditService->log(AuditAction::Submitted, $formRequest);
             $this->notifyReviewDepartment($formRequest);
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -153,7 +165,10 @@ class RequestWorkflowService
                 $this->notifyTargetDepartmentForAssignment($formRequest, $message);
             }
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -196,7 +211,10 @@ class RequestWorkflowService
             $title = $action === 'rejected' ? 'Request Rejected' : 'Request Returned';
             $this->notifyUser($formRequest->user, $title, "Your request \"{$formRequest->title}\" was {$action}.");
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -236,7 +254,10 @@ class RequestWorkflowService
                 $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to your section.");
             }
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -276,7 +297,10 @@ class RequestWorkflowService
             $this->notifyUser($assignee, 'Request Assigned', $message);
             $this->notifyCcUsers($formRequest, 'Request Assigned', $message);
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -330,7 +354,10 @@ class RequestWorkflowService
                 );
             }
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -359,7 +386,10 @@ class RequestWorkflowService
             $this->notifyTargetDepartmentForAssignment($formRequest, $message);
             $this->notifyCcUsers($formRequest, 'Request Returned to Department', $message);
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -386,7 +416,10 @@ class RequestWorkflowService
 
             $this->notifyUser($formRequest->user, 'Request Returned', "Your request \"{$formRequest->title}\" was returned by department admin. Remark: {$remark}");
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 
@@ -490,7 +523,10 @@ class RequestWorkflowService
 
             $this->auditService->log($audit, $formRequest, $processor, null, ['remark' => $remark, 'stage' => 'final']);
 
-            return $formRequest->fresh($this->defaultRelations());
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
         });
     }
 

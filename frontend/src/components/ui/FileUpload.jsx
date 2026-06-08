@@ -7,10 +7,19 @@ export default function FileUpload({ onFilesSelected, accept, multiple = false, 
   const [dragging, setDragging] = useState(false)
 
   const handleFiles = useCallback((fileList) => {
-    const arr = Array.from(fileList)
+    const maxBytes = maxSize * 1024 * 1024
+    const arr = Array.from(fileList).filter((file) => {
+      if (file.size > maxBytes) {
+        return false
+      }
+      return true
+    })
+    if (arr.length < fileList.length) {
+      window.alert(`File is too large. Maximum size is ${maxSize} MB.`)
+    }
     setFiles(arr)
     onFilesSelected?.(arr)
-  }, [onFilesSelected])
+  }, [maxSize, onFilesSelected])
 
   const removeFile = (index) => {
     const next = files.filter((_, i) => i !== index)

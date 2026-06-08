@@ -58,8 +58,10 @@ touch database/database.sqlite
 # Set DB_CONNECTION=sqlite in .env
 
 php artisan migrate --seed
-php artisan serve
+./serve.sh
 ```
+
+> **File uploads:** Always start the backend with `./serve.sh` (not plain `php artisan serve`). Default PHP allows only 2 MB uploads.
 
 ### Frontend Setup
 

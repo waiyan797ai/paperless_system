@@ -18,6 +18,25 @@ class DocumentPolicy
             return true;
         }
 
+        if ($document->uploader?->department_id === $user->department_id) {
+            return true;
+        }
+
+        if ($user->isDepartmentAdmin() && $document->distributions()
+            ->whereHas('recipients', fn ($q) => $q->where('department_id', $user->department_id))
+            ->exists()) {
+            return true;
+        }
+
+        return $document->userForwards()->where('user_id', $user->id)->exists();
+    }
+
+    public function forward(User $user, Document $document): bool
+    {
+        if (! $user->isDepartmentAdmin() || ! $user->department_id) {
+            return false;
+        }
+
         return $document->distributions()
             ->whereHas('recipients', fn ($q) => $q->where('department_id', $user->department_id))
             ->exists();

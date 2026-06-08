@@ -7,15 +7,21 @@ use App\Enums\DocumentRecipientStatus;
 use App\Enums\NotificationType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Document\DistributeDocumentRequest;
+use App\Http\Requests\Document\ForwardDocumentRequest;
+use App\Http\Requests\Document\StoreAndDistributeDocumentRequest;
 use App\Http\Requests\Document\StoreDocumentRequest;
+use App\Models\Department;
 use App\Models\Document;
 use App\Models\DocumentDepartmentRecipient;
 use App\Models\DocumentDistribution;
+use App\Models\DocumentUserForward;
 use App\Models\User;
 use App\Services\AuditService;
 use App\Services\NotificationService;
+use App\Services\RealtimeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
@@ -23,17 +29,30 @@ class DocumentController extends Controller
     public function __construct(
         protected AuditService $auditService,
         protected NotificationService $notificationService,
+        protected RealtimeService $realtimeService,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = Document::with('uploader');
+        $query = Document::with([
+            'uploader.department',
+            'distributions.recipients.department',
+            'userForwards.user',
+        ]);
 
         if (! $user->isAdminLevel()) {
             $query->where(function ($q) use ($user) {
-                $q->where('uploaded_by', $user->id)
-                    ->orWhereHas('distributions.recipients', fn ($rq) => $rq->where('department_id', $user->department_id));
+                $q->whereHas('uploader', fn ($uq) => $uq->where('department_id', $user->department_id));
+
+                if ($user->isDepartmentAdmin()) {
+                    $q->orWhereHas(
+                        'distributions.recipients',
+                        fn ($rq) => $rq->where('department_id', $user->department_id)
+                    );
+                }
+
+                $q->orWhereHas('userForwards', fn ($fq) => $fq->where('user_id', $user->id));
             });
         }
 
@@ -80,7 +99,12 @@ class DocumentController extends Controller
         $this->auditService->log(AuditAction::Viewed, $document);
 
         return response()->json([
-            'data' => $document->load(['uploader', 'distributions.recipients.department']),
+            'data' => $document->load([
+                'uploader',
+                'distributions.recipients.department',
+                'userForwards.user',
+                'userForwards.forwarder',
+            ]),
         ]);
     }
 
@@ -98,33 +122,173 @@ class DocumentController extends Controller
         return response()->json(['message' => 'Document deleted successfully.']);
     }
 
-    public function distribute(DistributeDocumentRequest $request, Document $document): JsonResponse
+    public function storeAndDistribute(StoreAndDistributeDocumentRequest $request): JsonResponse
     {
-        $distribution = DocumentDistribution::create([
-            'document_id' => $document->id,
-            'distributed_by' => $request->user()->id,
-            'notes' => $request->notes,
-            'distributed_at' => now(),
-        ]);
+        $file = $request->file('file');
+        $user = $request->user();
 
-        foreach ($request->department_ids as $departmentId) {
-            DocumentDepartmentRecipient::create([
-                'document_distribution_id' => $distribution->id,
-                'department_id' => $departmentId,
-                'status' => DocumentRecipientStatus::Sent,
+        $document = DB::transaction(function () use ($request, $file, $user) {
+            $document = Document::create([
+                'title' => $request->title,
+                'description' => $request->description,
+                'category' => $request->category,
+                'version' => $request->version ?? '1.0',
+                'uploaded_by' => $user->id,
+                'file_path' => $file->store('documents', 'documents'),
+                'file_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
             ]);
 
-            $users = User::where('department_id', $departmentId)->where('status', 'active')->get();
+            $distribution = $this->createDistribution(
+                $document,
+                $user->id,
+                $request->department_ids,
+                $request->notes
+            );
+
+            $this->auditService->log(AuditAction::Created, $document);
+            $this->auditService->log(AuditAction::Distributed, $document);
+
+            return $document;
+        });
+
+        $this->realtimeService->bumpForDocumentDistribution(
+            $document,
+            $request->department_ids,
+            $user->id,
+        );
+
+        return response()->json([
+            'message' => 'Document distributed successfully.',
+            'data' => $document->load(['uploader.department', 'distributions.recipients.department']),
+        ], 201);
+    }
+
+    public function distributionHistory(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = DocumentDistribution::with(['document', 'distributor.department', 'recipients.department']);
+
+        if (! $user->isAdminLevel()) {
+            $query->where(function ($q) use ($user) {
+                $q->where('distributed_by', $user->id)
+                    ->orWhereHas('distributor', fn ($uq) => $uq->where('department_id', $user->department_id))
+                    ->orWhereHas('recipients', fn ($rq) => $rq->where('department_id', $user->department_id));
+            });
+        }
+
+        return response()->json([
+            'data' => $query->latest('distributed_at')->paginate($request->integer('per_page', 10)),
+        ]);
+    }
+
+    public function forwardableUsers(Request $request, Document $document): JsonResponse
+    {
+        $this->authorize('forward', $document);
+
+        $user = $request->user();
+        $departmentId = $user->department_id;
+
+        $alreadyForwarded = $document->userForwards()
+            ->where('department_id', $departmentId)
+            ->pluck('user_id');
+
+        $users = User::query()
+            ->with('section')
+            ->where('department_id', $departmentId)
+            ->where('status', 'active')
+            ->where('id', '!=', $user->id)
+            ->whereNotIn('id', $alreadyForwarded)
+            ->where(function ($q) use ($departmentId) {
+                $q->whereDoesntHave('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head', 'admin', 'super_admin']))
+                    ->whereNotIn('id', Department::where('id', $departmentId)->whereNotNull('head_id')->pluck('head_id'));
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'section_id']);
+
+        return response()->json(['data' => $users]);
+    }
+
+    public function forward(ForwardDocumentRequest $request, Document $document): JsonResponse
+    {
+        $user = $request->user();
+        $departmentId = $user->department_id;
+
+        $validUsers = User::query()
+            ->where('department_id', $departmentId)
+            ->where('status', 'active')
+            ->whereIn('id', $request->user_ids)
+            ->where('id', '!=', $user->id)
+            ->get();
+
+        if ($validUsers->isEmpty()) {
+            return response()->json(['message' => 'No valid users selected for forwarding.'], 422);
+        }
+
+        $createdForwards = collect();
+
+        DB::transaction(function () use ($document, $user, $departmentId, $request, $validUsers, &$createdForwards) {
+            foreach ($validUsers as $recipient) {
+                $forward = DocumentUserForward::firstOrCreate(
+                    [
+                        'document_id' => $document->id,
+                        'department_id' => $departmentId,
+                        'user_id' => $recipient->id,
+                    ],
+                    [
+                        'forwarded_by' => $user->id,
+                        'status' => DocumentRecipientStatus::Sent,
+                        'notes' => $request->notes,
+                    ]
+                );
+
+                if ($forward->wasRecentlyCreated) {
+                    $createdForwards->push($forward);
+                }
+            }
+        });
+
+        if ($createdForwards->isNotEmpty()) {
             $this->notificationService->notifyMany(
-                $users,
+                $validUsers->whereIn('id', $createdForwards->pluck('user_id')),
                 NotificationType::Document,
-                'New Document Distributed',
-                "Document \"{$document->title}\" has been distributed to your department.",
-                ['document_id' => $document->id, 'distribution_id' => $distribution->id]
+                'Document Forwarded to You',
+                "Document \"{$document->title}\" has been forwarded to you by your department admin.",
+                ['document_id' => $document->id]
+            );
+
+            $this->realtimeService->bumpForDocumentForward(
+                $document,
+                $createdForwards->pluck('user_id')->all(),
+                $user->id,
             );
         }
 
+        return response()->json([
+            'message' => $createdForwards->isEmpty()
+                ? 'Selected users already have access to this document.'
+                : 'Document forwarded successfully.',
+            'data' => $document->load(['userForwards.user', 'userForwards.forwarder']),
+        ]);
+    }
+
+    public function distribute(DistributeDocumentRequest $request, Document $document): JsonResponse
+    {
+        $distribution = $this->createDistribution(
+            $document,
+            $request->user()->id,
+            $request->department_ids,
+            $request->notes
+        );
+
         $this->auditService->log(AuditAction::Distributed, $document);
+
+        $this->realtimeService->bumpForDocumentDistribution(
+            $document,
+            $request->department_ids,
+            $request->user()->id,
+        );
 
         return response()->json([
             'message' => 'Document distributed successfully.',
@@ -132,16 +296,64 @@ class DocumentController extends Controller
         ], 201);
     }
 
+    protected function createDistribution(
+        Document $document,
+        int $distributedBy,
+        array $departmentIds,
+        ?string $notes = null,
+    ): DocumentDistribution {
+        $distribution = DocumentDistribution::create([
+            'document_id' => $document->id,
+            'distributed_by' => $distributedBy,
+            'notes' => $notes,
+            'distributed_at' => now(),
+        ]);
+
+        foreach ($departmentIds as $departmentId) {
+            DocumentDepartmentRecipient::create([
+                'document_distribution_id' => $distribution->id,
+                'department_id' => $departmentId,
+                'status' => DocumentRecipientStatus::Sent,
+            ]);
+
+            $admins = $this->departmentAdminUsers($departmentId);
+            $this->notificationService->notifyMany(
+                $admins,
+                NotificationType::Document,
+                'New Document for Your Department',
+                "Document \"{$document->title}\" has been sent to your department. Forward it to staff who need access.",
+                ['document_id' => $document->id, 'distribution_id' => $distribution->id]
+            );
+        }
+
+        return $distribution;
+    }
+
     public function markViewed(Request $request, Document $document): JsonResponse
     {
         $this->authorize('view', $document);
 
-        $recipient = DocumentDepartmentRecipient::whereHas('distribution', fn ($q) => $q->where('document_id', $document->id))
-            ->where('department_id', $request->user()->department_id)
+        $user = $request->user();
+
+        if ($user->isDepartmentAdmin()) {
+            $recipient = DocumentDepartmentRecipient::whereHas('distribution', fn ($q) => $q->where('document_id', $document->id))
+                ->where('department_id', $user->department_id)
+                ->first();
+
+            if ($recipient && $recipient->status === DocumentRecipientStatus::Sent) {
+                $recipient->update([
+                    'status' => DocumentRecipientStatus::Viewed,
+                    'viewed_at' => now(),
+                ]);
+            }
+        }
+
+        $forward = DocumentUserForward::where('document_id', $document->id)
+            ->where('user_id', $user->id)
             ->first();
 
-        if ($recipient && $recipient->status === DocumentRecipientStatus::Sent) {
-            $recipient->update([
+        if ($forward && $forward->status === DocumentRecipientStatus::Sent) {
+            $forward->update([
                 'status' => DocumentRecipientStatus::Viewed,
                 'viewed_at' => now(),
             ]);
@@ -154,15 +366,30 @@ class DocumentController extends Controller
     {
         $this->authorize('view', $document);
 
-        $recipient = DocumentDepartmentRecipient::whereHas('distribution', fn ($q) => $q->where('document_id', $document->id))
-            ->where('department_id', $request->user()->department_id)
+        $user = $request->user();
+
+        if ($user->isDepartmentAdmin()) {
+            $recipient = DocumentDepartmentRecipient::whereHas('distribution', fn ($q) => $q->where('document_id', $document->id))
+                ->where('department_id', $user->department_id)
+                ->first();
+
+            if ($recipient) {
+                $recipient->update([
+                    'status' => DocumentRecipientStatus::Acknowledged,
+                    'acknowledged_at' => now(),
+                    'viewed_at' => $recipient->viewed_at ?? now(),
+                ]);
+            }
+        }
+
+        $forward = DocumentUserForward::where('document_id', $document->id)
+            ->where('user_id', $user->id)
             ->first();
 
-        if ($recipient) {
-            $recipient->update([
+        if ($forward) {
+            $forward->update([
                 'status' => DocumentRecipientStatus::Acknowledged,
-                'acknowledged_at' => now(),
-                'viewed_at' => $recipient->viewed_at ?? now(),
+                'viewed_at' => $forward->viewed_at ?? now(),
             ]);
         }
 
@@ -191,6 +418,25 @@ class DocumentController extends Controller
             ->latest('distributed_at')
             ->get();
 
-        return response()->json(['data' => $distributions]);
+        $forwards = $document->userForwards()
+            ->with(['user', 'forwarder', 'department'])
+            ->latest()
+            ->get();
+
+        return response()->json(['data' => ['distributions' => $distributions, 'forwards' => $forwards]]);
+    }
+
+    protected function departmentAdminUsers(int $departmentId)
+    {
+        $headIds = Department::where('id', $departmentId)->whereNotNull('head_id')->pluck('head_id');
+
+        return User::query()
+            ->where('department_id', $departmentId)
+            ->where('status', 'active')
+            ->where(function ($q) use ($headIds) {
+                $q->whereHas('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head']))
+                    ->orWhereIn('id', $headIds);
+            })
+            ->get();
     }
 }

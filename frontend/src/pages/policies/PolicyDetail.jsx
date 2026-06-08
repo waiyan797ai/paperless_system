@@ -6,6 +6,7 @@ import Card, { CardTitle } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import PdfViewer from '../../components/ui/PdfViewer'
 import api from '../../lib/api'
 import { hasRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
@@ -146,6 +147,17 @@ export default function PolicyDetail() {
           </div>
         </Card>
       </div>
+
+      {policy.file_path && (
+        <Card className="mt-6">
+          <CardTitle className="mb-4">PDF Preview</CardTitle>
+          <PdfViewer
+            src={`/policies/${id}/download`}
+            fileName={policy.file_name || `${policy.title}.pdf`}
+            height="h-[75vh]"
+          />
+        </Card>
+      )}
     </PageTransition>
   )
 }

@@ -30,4 +30,9 @@ class Document extends Model
     {
         return $this->hasMany(DocumentDistribution::class);
     }
+
+    public function userForwards(): HasMany
+    {
+        return $this->hasMany(DocumentUserForward::class);
+    }
 }

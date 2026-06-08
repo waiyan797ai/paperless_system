@@ -75,19 +75,18 @@ export default function PolicyForm() {
       if (file) formData.append('file', file)
 
       if (isEdit) {
-        await api.put(`/policies/${id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        // PHP only accepts multipart file uploads on POST
+        await api.post(`/policies/${id}`, formData)
         addToast('Policy updated', 'success')
       } else {
-        await api.post('/policies', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        await api.post('/policies', formData)
         addToast('Policy created — visible to all users', 'success')
       }
       navigate('/policies')
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to save policy', 'error')
+      const payload = err.response?.data
+      const fieldError = payload?.errors ? Object.values(payload.errors).flat()[0] : null
+      addToast(fieldError || payload?.message || 'Failed to save policy', 'error')
     } finally {
       setLoading(false)
     }

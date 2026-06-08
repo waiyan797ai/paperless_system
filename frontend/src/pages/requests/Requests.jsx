@@ -10,10 +10,10 @@ import Tabs from '../../components/ui/Tabs'
 import Table, { TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination } from '../../components/ui/Table'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import EmptyState from '../../components/ui/EmptyState'
-import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
 import { hasPermission } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
+import { useFormRequestCounts, useFormRequestsList } from '../../hooks/useFormRequests'
 
 const allFolders = {
   outbox: { label: 'Outbox', icon: Send, permission: 'form_requests.create' },
@@ -28,13 +28,9 @@ const allFolders = {
 
 export default function Requests() {
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [activeTab, setActiveTab] = useState('outbox')
   const [page, setPage] = useState(1)
-  const [requests, setRequests] = useState([])
-  const [counts, setCounts] = useState({})
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
   const { user } = useAuth()
   const pageSize = 10
@@ -50,33 +46,23 @@ export default function Requests() {
     }
   }, [visibleFolders, activeTab])
 
-  const fetchCounts = () => {
-    api.get('/form-requests/counts').then(({ data }) => setCounts(data.data || {})).catch(() => {})
-  }
-
   useEffect(() => {
-    fetchCounts()
-  }, [activeTab])
-
-  useEffect(() => {
-    const fetchRequests = async () => {
-      setLoading(true)
-      try {
-        const { data } = await api.get('/form-requests', {
-          params: { folder: activeTab, page, per_page: pageSize, search: search || undefined },
-        })
-        setRequests(data.data?.data || [])
-        setTotalPages(data.data?.last_page || 1)
-        setTotalItems(data.data?.total || 0)
-      } catch {
-        setRequests([])
-      } finally {
-        setLoading(false)
-      }
-    }
-    const timer = setTimeout(fetchRequests, search ? 300 : 0)
+    const timer = setTimeout(() => setDebouncedSearch(search), search ? 300 : 0)
     return () => clearTimeout(timer)
-  }, [activeTab, page, search])
+  }, [search])
+
+  const { data: counts = {} } = useFormRequestCounts()
+  const { data, isLoading, isFetching } = useFormRequestsList({
+    folder: activeTab,
+    page,
+    search: debouncedSearch,
+    pageSize,
+    enabled: Boolean(activeTab),
+  })
+
+  const requests = data?.items || []
+  const totalPages = data?.totalPages || 1
+  const totalItems = data?.totalItems || 0
 
   const tabs = visibleFolders.map(([id, meta]) => ({
     id,
@@ -105,11 +91,16 @@ export default function Requests() {
       />
       <Card>
         <div className="flex flex-col gap-4 mb-6">
-          <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => { setActiveTab(tab); setPage(1) }} />
+          <div className="flex items-center justify-between gap-3">
+            <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => { setActiveTab(tab); setPage(1) }} />
+            {isFetching && !isLoading && (
+              <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">Updating...</span>
+            )}
+          </div>
           <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1) }} placeholder="Search requests..." className="max-w-sm" />
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="py-12 flex justify-center"><LoadingSpinner label="Loading requests..." /></div>
         ) : requests.length === 0 ? (
           <EmptyState title={`No requests in ${folderMeta?.label || 'folder'}`} description="Try another folder or create a new request." />
