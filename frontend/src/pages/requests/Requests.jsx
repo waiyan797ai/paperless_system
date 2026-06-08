@@ -20,7 +20,7 @@ const allFolders = {
   inbox: { label: 'Inbox', icon: Inbox, permission: 'form_requests.dept_inbox' },
   to_assign: { label: 'To Assign', icon: ClipboardCheck, permission: 'form_requests.assign' },
   section_inbox: { label: 'Section Inbox', icon: Layers, permission: 'form_requests.section_inbox' },
-  assign: { label: 'Assign', icon: UserCheck, permission: 'form_requests.process' },
+  assign: { label: 'Assigned to Me', icon: UserCheck, permission: 'form_requests.process' },
   cc: { label: 'CC', icon: Users, permission: 'form_requests.create' },
   approved: { label: 'Approved', icon: CheckCircle, permission: 'form_requests.create' },
   rejected: { label: 'Rejected', icon: XCircle, permission: 'form_requests.create' },
@@ -72,6 +72,7 @@ export default function Requests() {
   }))
 
   const folderMeta = allFolders[activeTab]
+  const canCreate = hasPermission(user, 'form_requests.create')
 
   return (
     <PageTransition>
@@ -83,7 +84,7 @@ export default function Requests() {
             {hasPermission(user, 'form_templates.manage') && (
               <Button variant="secondary" onClick={() => navigate('/form-templates')}>Form Templates</Button>
             )}
-            {hasPermission(user, 'form_requests.create') && (
+            {canCreate && (
               <Button variant="gold" onClick={() => navigate('/requests/new')}><Plus className="h-4 w-4" /> New Request</Button>
             )}
           </div>
@@ -103,7 +104,12 @@ export default function Requests() {
         {isLoading ? (
           <div className="py-12 flex justify-center"><LoadingSpinner label="Loading requests..." /></div>
         ) : requests.length === 0 ? (
-          <EmptyState title={`No requests in ${folderMeta?.label || 'folder'}`} description="Try another folder or create a new request." />
+          <EmptyState
+            title={`No requests in ${folderMeta?.label || 'folder'}`}
+            description={canCreate ? 'Create a new request to get started.' : 'Try another folder.'}
+            action={canCreate ? () => navigate('/requests/new') : undefined}
+            actionLabel={canCreate ? 'New Request' : undefined}
+          />
         ) : (
           <>
             <Table>

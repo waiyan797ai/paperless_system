@@ -53,6 +53,19 @@ export function normalizeRole(role) {
   return map[name] || 'employee'
 }
 
+function extractPermissionSlugs(user) {
+  if (Array.isArray(user?.permissions) && user.permissions.length > 0) {
+    return user.permissions.filter((p) => typeof p === 'string')
+  }
+
+  const rolePermissions = user?.role?.permissions
+  if (Array.isArray(rolePermissions) && rolePermissions.length > 0) {
+    return rolePermissions.map((p) => (typeof p === 'string' ? p : p.slug)).filter(Boolean)
+  }
+
+  return []
+}
+
 export function normalizeUser(user) {
   if (!user) return null
   const backendRoleName =
@@ -64,7 +77,7 @@ export function normalizeUser(user) {
     roleName: backendRoleName || normalizeRole(user.role),
     departmentName: user.department?.name || user.department_name,
     sectionName: user.section?.name || user.section_name,
-    permissions: user.permissions || [],
+    permissions: extractPermissionSlugs(user),
   }
 }
 
@@ -95,7 +108,18 @@ export function hasRole(user, ...roles) {
 export function hasPermission(user, permission) {
   if (!user) return false
   if (hasRole(user, 'admin')) return true
-  return Array.isArray(user.permissions) && user.permissions.includes(permission)
+
+  const permissions = extractPermissionSlugs(user)
+  if (permissions.includes(permission)) return true
+
+  // Standard employee request workflow
+  if (hasRole(user, 'employee')) {
+    if (permission === 'form_requests.create' || permission === 'form_requests.process') {
+      return true
+    }
+  }
+
+  return false
 }
 
 export function canAccessRoute(user, allowedRoles) {

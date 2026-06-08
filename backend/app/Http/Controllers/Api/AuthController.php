@@ -96,9 +96,12 @@ class AuthController extends Controller
 
         $user->update($data);
 
+        $user = $user->fresh(['role.permissions', 'department', 'section']);
+        $user->setAttribute('permissions', $user->permissionSlugs());
+
         return response()->json([
             'message' => 'Profile updated successfully.',
-            'user' => $user->fresh(['role', 'department', 'section']),
+            'user' => $user,
         ]);
     }
 }

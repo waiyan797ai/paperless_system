@@ -175,7 +175,7 @@ export default function Documents() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Document</TableHead>
+                  <TableHead className="max-w-[240px] sm:max-w-[320px]">Document</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Author</TableHead>
@@ -193,12 +193,17 @@ export default function Documents() {
                     className={isPdfDocument(doc) ? 'cursor-pointer hover:bg-gold-500/5' : ''}
                     onClick={() => isPdfDocument(doc) && openDocument(doc)}
                   >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
+                    <TableCell className="max-w-[240px] sm:max-w-[320px]">
+                      <div className="flex items-center gap-2 min-w-0">
                         <FileText className="h-4 w-4 text-gold-600 shrink-0" />
-                        <span className="font-medium text-[var(--text-primary)]">{doc.title}</span>
+                        <span
+                          className="font-medium text-[var(--text-primary)] truncate min-w-0 flex-1"
+                          title={doc.title}
+                        >
+                          {doc.title}
+                        </span>
                         {isPdfDocument(doc) && (
-                          <Badge variant="gold" className="text-[10px]">PDF</Badge>
+                          <Badge variant="gold" className="text-[10px] shrink-0">PDF</Badge>
                         )}
                       </div>
                     </TableCell>

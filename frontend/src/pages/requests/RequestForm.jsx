@@ -164,6 +164,11 @@ export default function RequestForm() {
       </button>
       <PageHeader title={isEdit ? 'Edit Request' : 'New Request'} subtitle="Select a form template and fill in the fields" />
       <Card className="max-w-2xl">
+        {!isEdit && templates.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">
+            No active form templates available. Ask your administrator to create form templates first.
+          </p>
+        ) : (
         <form onSubmit={(e) => { e.preventDefault(); saveRequest(true) }} className="space-y-5">
           {!isEdit && (
             <SearchableSelect
@@ -211,6 +216,7 @@ export default function RequestForm() {
             <Button type="button" variant="secondary" onClick={() => navigate('/requests')}>Cancel</Button>
           </div>
         </form>
+        )}
       </Card>
     </PageTransition>
   )
