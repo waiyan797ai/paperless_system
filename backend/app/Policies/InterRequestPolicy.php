@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\InterRequest;
+use App\Models\User;
+
+class InterRequestPolicy
+{
+    public function viewAny(User $user): bool
+    {
+        return true;
+    }
+
+    public function view(User $user, InterRequest $interRequest): bool
+    {
+        if ($user->isAdminLevel()) {
+            return true;
+        }
+
+        if ($interRequest->requester_id === $user->id) {
+            return true;
+        }
+
+        if ($interRequest->assigned_to === $user->id) {
+            return true;
+        }
+
+        return in_array($user->department_id, [
+            $interRequest->from_department_id,
+            $interRequest->to_department_id,
+        ], true) && $user->isDepartmentHead();
+    }
+
+    public function create(User $user): bool
+    {
+        return true;
+    }
+
+    public function update(User $user, InterRequest $interRequest): bool
+    {
+        return $user->isAdminLevel()
+            || $interRequest->requester_id === $user->id
+            || $interRequest->assigned_to === $user->id
+            || ($user->isDepartmentHead() && $interRequest->to_department_id === $user->department_id);
+    }
+
+    public function delete(User $user, InterRequest $interRequest): bool
+    {
+        return $user->isAdminLevel() || $interRequest->requester_id === $user->id;
+    }
+}
