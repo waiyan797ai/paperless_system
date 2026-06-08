@@ -4,18 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\AuditAction;
 use App\Enums\InterRequestStatus;
+use App\Enums\InterRequestStepAction;
 use App\Enums\NotificationType;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\InterRequest\ApproveInterRequestRequest;
+use App\Http\Requests\InterRequest\ForwardInterRequestRequest;
 use App\Http\Requests\InterRequest\StoreCommentRequest;
 use App\Http\Requests\InterRequest\StoreInterRequestRequest;
 use App\Http\Requests\InterRequest\UpdateInterRequestRequest;
 use App\Models\InterRequest;
 use App\Models\InterRequestAttachment;
 use App\Models\InterRequestComment;
+use App\Models\InterRequestStep;
+use App\Models\User;
 use App\Services\AuditService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class InterRequestController extends Controller
@@ -28,22 +35,31 @@ class InterRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = InterRequest::with(['requester', 'fromDepartment', 'toDepartment', 'assignee']);
+        $query = InterRequest::with(['requester', 'fromDepartment', 'toDepartment', 'assignee.department']);
 
-        if ($user->isAdminLevel()) {
-            // all
-        } elseif ($user->isDepartmentHead()) {
+        if (! $user->isAdminLevel()) {
             $query->where(function ($q) use ($user) {
                 $q->where('requester_id', $user->id)
-                    ->orWhere('from_department_id', $user->department_id)
-                    ->orWhere('to_department_id', $user->department_id);
+                    ->orWhere('assigned_to', $user->id)
+                    ->orWhereHas('steps', function ($sq) use ($user) {
+                        $sq->where('user_id', $user->id)->orWhere('assigned_to_id', $user->id);
+                    });
+
+                if ($user->isDepartmentHead()) {
+                    $q->orWhere('from_department_id', $user->department_id)
+                        ->orWhere('to_department_id', $user->department_id);
+                }
             });
-        } else {
-            $query->where('requester_id', $user->id);
         }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q->where('subject', 'ilike', "%{$search}%")
+                ->orWhere('reference_no', 'ilike', "%{$search}%"));
         }
 
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 15))]);
@@ -51,45 +67,65 @@ class InterRequestController extends Controller
 
     public function store(StoreInterRequestRequest $request): JsonResponse
     {
-        $interRequest = InterRequest::create([
-            'reference_no' => 'IR-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
-            'requester_id' => $request->user()->id,
-            'from_department_id' => $request->from_department_id,
-            'to_department_id' => $request->to_department_id,
-            'subject' => $request->subject,
-            'description' => $request->description,
-            'priority' => $request->priority ?? 'normal',
-            'status' => InterRequestStatus::Pending,
-        ]);
+        $requester = $request->user();
+        $assignee = User::where('id', $request->assigned_to)
+            ->where('status', 'active')
+            ->where('id', '!=', $requester->id)
+            ->first();
+        if (! $assignee) {
+            return response()->json(['message' => 'Selected user is not available.'], 422);
+        }
 
-        if ($request->hasFile('attachments')) {
-            foreach ($request->file('attachments') as $file) {
-                InterRequestAttachment::create([
-                    'inter_request_id' => $interRequest->id,
-                    'uploaded_by' => $request->user()->id,
-                    'file_name' => $file->getClientOriginalName(),
-                    'file_path' => $file->store('inter-requests', 'documents'),
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                ]);
+        $interRequest = DB::transaction(function () use ($request, $requester, $assignee) {
+            $interRequest = InterRequest::create([
+                'reference_no' => 'IR-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
+                'requester_id' => $requester->id,
+                'from_department_id' => $requester->department_id,
+                'to_department_id' => $assignee->department_id,
+                'assigned_to' => $assignee->id,
+                'subject' => $request->subject,
+                'description' => $request->description,
+                'priority' => $request->priority ?? 'normal',
+                'status' => InterRequestStatus::Pending,
+            ]);
+
+            InterRequestStep::create([
+                'inter_request_id' => $interRequest->id,
+                'user_id' => $request->user()->id,
+                'assigned_to_id' => $assignee->id,
+                'action' => InterRequestStepAction::Submitted,
+                'remark' => $request->remark,
+            ]);
+
+            if ($request->hasFile('attachments')) {
+                foreach ($request->file('attachments') as $file) {
+                    InterRequestAttachment::create([
+                        'inter_request_id' => $interRequest->id,
+                        'uploaded_by' => $request->user()->id,
+                        'file_name' => $file->getClientOriginalName(),
+                        'file_path' => $file->store('inter-requests', 'documents'),
+                        'mime_type' => $file->getMimeType(),
+                        'file_size' => $file->getSize(),
+                    ]);
+                }
             }
-        }
 
-        if ($interRequest->toDepartment?->head) {
-            $this->notificationService->create(
-                $interRequest->toDepartment->head,
-                NotificationType::InterRequest,
-                'New Inter-Department Request',
-                "New request: {$interRequest->subject}",
-                ['inter_request_id' => $interRequest->id]
-            );
-        }
+            return $interRequest;
+        });
+
+        $this->notificationService->create(
+            $assignee,
+            NotificationType::InterRequest,
+            'Inter-Department Request Assigned',
+            "{$request->user()->name} sent you request: {$interRequest->subject}",
+            ['inter_request_id' => $interRequest->id]
+        );
 
         $this->auditService->log(AuditAction::Created, $interRequest);
 
         return response()->json([
             'message' => 'Inter-department request created.',
-            'data' => $interRequest->load(['requester', 'fromDepartment', 'toDepartment', 'attachments']),
+            'data' => $interRequest->load(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'attachments', 'steps.user', 'steps.assignee']),
         ], 201);
     }
 
@@ -99,9 +135,112 @@ class InterRequestController extends Controller
 
         return response()->json([
             'data' => $interRequest->load([
-                'requester', 'fromDepartment', 'toDepartment', 'assignee',
+                'requester', 'fromDepartment', 'toDepartment', 'assignee.department',
                 'comments.user', 'attachments.uploader',
+                'steps.user', 'steps.assignee',
             ]),
+        ]);
+    }
+
+    public function assignableUsers(Request $request, ?InterRequest $interRequest = null): JsonResponse
+    {
+        $excludeIds = array_filter([$request->user()->id, $interRequest?->requester_id]);
+
+        $query = User::query()
+            ->with(['department', 'section'])
+            ->where('status', 'active')
+            ->whereNotIn('id', $excludeIds)
+            ->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q->where('name', 'ilike', "%{$search}%")
+                ->orWhere('email', 'ilike', "%{$search}%"));
+        }
+
+        return response()->json(['data' => $query->get(['id', 'name', 'email', 'department_id', 'section_id'])]);
+    }
+
+    public function forward(ForwardInterRequestRequest $request, InterRequest $interRequest): JsonResponse
+    {
+        if (! $interRequest->isOpen()) {
+            return response()->json(['message' => 'This request is already closed.'], 422);
+        }
+
+        $assignee = User::where('id', $request->assigned_to)
+            ->where('status', 'active')
+            ->where('id', '!=', $request->user()->id)
+            ->first();
+        if (! $assignee) {
+            return response()->json(['message' => 'Selected user is not available.'], 422);
+        }
+
+        DB::transaction(function () use ($request, $interRequest, $assignee) {
+            InterRequestStep::create([
+                'inter_request_id' => $interRequest->id,
+                'user_id' => $request->user()->id,
+                'assigned_to_id' => $assignee->id,
+                'action' => InterRequestStepAction::Forwarded,
+                'remark' => $request->remark,
+            ]);
+
+            $interRequest->update([
+                'assigned_to' => $assignee->id,
+                'to_department_id' => $assignee->department_id,
+                'status' => InterRequestStatus::Processing,
+            ]);
+        });
+
+        $this->notificationService->create(
+            $assignee,
+            NotificationType::InterRequest,
+            'Inter-Request Forwarded to You',
+            "{$request->user()->name} forwarded a request: {$interRequest->subject}",
+            ['inter_request_id' => $interRequest->id]
+        );
+
+        $this->auditService->log(AuditAction::Updated, $interRequest);
+
+        return response()->json([
+            'message' => 'Request forwarded successfully.',
+            'data' => $interRequest->fresh(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'steps.user', 'steps.assignee']),
+        ]);
+    }
+
+    public function approve(ApproveInterRequestRequest $request, InterRequest $interRequest): JsonResponse
+    {
+        if (! $interRequest->isOpen()) {
+            return response()->json(['message' => 'This request is already closed.'], 422);
+        }
+
+        DB::transaction(function () use ($request, $interRequest) {
+            InterRequestStep::create([
+                'inter_request_id' => $interRequest->id,
+                'user_id' => $request->user()->id,
+                'assigned_to_id' => null,
+                'action' => InterRequestStepAction::Approved,
+                'remark' => $request->remark,
+            ]);
+
+            $interRequest->update([
+                'status' => InterRequestStatus::Approved,
+                'completed_at' => now(),
+            ]);
+        });
+
+        $this->notificationService->create(
+            $interRequest->requester,
+            NotificationType::InterRequest,
+            'Inter-Request Approved',
+            "{$request->user()->name} approved your request: {$interRequest->subject}",
+            ['inter_request_id' => $interRequest->id]
+        );
+
+        $this->auditService->log(AuditAction::Updated, $interRequest);
+
+        return response()->json([
+            'message' => 'Request approved successfully.',
+            'data' => $interRequest->fresh(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'steps.user', 'steps.assignee']),
         ]);
     }
 
@@ -165,5 +304,20 @@ class InterRequestController extends Controller
             'message' => 'Attachment uploaded.',
             'data' => $attachment,
         ], 201);
+    }
+
+    public function downloadAttachment(InterRequest $interRequest, InterRequestAttachment $attachment): JsonResponse|\Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $this->authorize('view', $interRequest);
+
+        if ($attachment->inter_request_id !== $interRequest->id) {
+            abort(404);
+        }
+
+        if (! Storage::disk('documents')->exists($attachment->file_path)) {
+            return response()->json(['message' => 'File not found.'], 404);
+        }
+
+        return Storage::disk('documents')->download($attachment->file_path, $attachment->file_name);
     }
 }

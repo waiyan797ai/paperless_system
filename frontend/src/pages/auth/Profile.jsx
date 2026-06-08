@@ -30,7 +30,7 @@ export default function Profile() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1 text-center">
           <Avatar name={user?.name} size="xl" className="mx-auto" />
-          <h3 className="font-display text-xl font-semibold mt-4 text-[var(--text-primary)]">{user?.name}</h3>
+          <h3 className="text-xl font-semibold mt-4 text-[var(--text-primary)] tracking-tight">{user?.name}</h3>
           <p className="text-sm text-[var(--text-muted)]">{user?.email}</p>
           <Badge variant="gold" className="mt-3 capitalize">{user?.role}</Badge>
           <div className="mt-6 space-y-3 text-left">

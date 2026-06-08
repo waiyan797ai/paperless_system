@@ -78,7 +78,7 @@ export default function Header({ onMenuClick, sidebarCollapsed }) {
             <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center justify-between">
               <span className="font-semibold text-sm text-[var(--text-primary)]">Notifications</span>
               {unreadCount > 0 && (
-                <button onClick={markAllAsRead} className="text-xs text-gold-600 hover:underline">
+                <button onClick={markAllAsRead} className="text-xs text-gold-600 dark:text-gold-400 hover:underline">
                   Mark all read
                 </button>
               )}
@@ -101,7 +101,7 @@ export default function Header({ onMenuClick, sidebarCollapsed }) {
             </div>
             <button
               onClick={() => navigate('/notifications')}
-              className="w-full px-4 py-2.5 text-sm text-gold-600 hover:bg-[var(--bg-surface)] text-center font-medium"
+              className="w-full px-4 py-2.5 text-sm text-gold-600 dark:text-gold-400 hover:bg-[var(--bg-surface)] text-center font-medium"
             >
               View all
             </button>

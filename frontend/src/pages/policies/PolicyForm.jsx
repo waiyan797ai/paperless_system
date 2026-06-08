@@ -150,7 +150,7 @@ export default function PolicyForm() {
           </div>
 
           {typeOptions.length === 0 && (
-            <p className="text-sm text-amber-600">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
               No policy types available.{' '}
               <button type="button" onClick={() => navigate('/policy-types')} className="underline hover:text-gold-600">
                 Create policy types first

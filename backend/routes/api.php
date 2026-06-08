@@ -58,9 +58,14 @@ Route::prefix('v1')->group(function () {
         Route::post('form-requests/{form_request}/return', [FormRequestController::class, 'returnForRevision']);
         Route::post('form-requests/{form_request}/comments', [FormRequestController::class, 'addComment']);
 
+        Route::get('inter-requests/assignable-users', [InterRequestController::class, 'assignableUsers']);
         Route::apiResource('inter-requests', InterRequestController::class);
+        Route::get('inter-requests/{inter_request}/assignable-users', [InterRequestController::class, 'assignableUsers']);
+        Route::post('inter-requests/{inter_request}/forward', [InterRequestController::class, 'forward']);
+        Route::post('inter-requests/{inter_request}/approve', [InterRequestController::class, 'approve']);
         Route::post('inter-requests/{inter_request}/comments', [InterRequestController::class, 'addComment']);
         Route::post('inter-requests/{inter_request}/attachments', [InterRequestController::class, 'addAttachment']);
+        Route::get('inter-requests/{inter_request}/attachments/{attachment}/download', [InterRequestController::class, 'downloadAttachment']);
 
         Route::post('documents/distribute', [DocumentController::class, 'storeAndDistribute']);
         Route::get('documents/distributions', [DocumentController::class, 'distributionHistory']);

@@ -14,20 +14,14 @@ class StoreInterRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'to_department_id' => ['required', 'exists:departments,id', 'different:from_department_id'],
-            'from_department_id' => ['nullable', 'exists:departments,id'],
             'subject' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', 'in:low,normal,high,urgent'],
+            'assigned_to' => ['required', 'integer', 'exists:users,id'],
+            'remark' => ['nullable', 'string', 'max:2000'],
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['file', 'max:10240'],
         ];
     }
 
-    protected function prepareForValidation(): void
-    {
-        if (! $this->from_department_id) {
-            $this->merge(['from_department_id' => $this->user()->department_id]);
-        }
-    }
 }

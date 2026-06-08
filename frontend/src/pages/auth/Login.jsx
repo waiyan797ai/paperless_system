@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../../components/ui/Toast'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
+import Logo from '../../components/ui/Logo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -37,14 +38,12 @@ export default function Login() {
   return (
     <div>
       <div className="lg:hidden mb-8 text-center">
-        <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-gold-600 to-gold-500 flex items-center justify-center mx-auto mb-4">
-          <span className="text-primary-950 font-bold text-xl">29</span>
-        </div>
-        <h1 className="font-display text-2xl font-bold text-[var(--text-primary)]">Sign In</h1>
+        <Logo size="md" className="mx-auto mb-4 ring-white/20" />
+        <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Sign In</h1>
       </div>
 
       <div className="hidden lg:block mb-8">
-        <h2 className="font-display text-2xl font-bold text-[var(--text-primary)]">Welcome back</h2>
+        <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Welcome back</h2>
         <p className="text-[var(--text-muted)] mt-1">Sign in to your account to continue</p>
       </div>
 

@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\InterRequestStatus;
 use App\Models\InterRequest;
 use App\Models\User;
 
@@ -26,6 +27,14 @@ class InterRequestPolicy
             return true;
         }
 
+        if ($interRequest->steps()
+            ->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)->orWhere('assigned_to_id', $user->id);
+            })
+            ->exists()) {
+            return true;
+        }
+
         return in_array($user->department_id, [
             $interRequest->from_department_id,
             $interRequest->to_department_id,
@@ -35,6 +44,12 @@ class InterRequestPolicy
     public function create(User $user): bool
     {
         return true;
+    }
+
+    public function process(User $user, InterRequest $interRequest): bool
+    {
+        return $interRequest->assigned_to === $user->id
+            && in_array($interRequest->status, [InterRequestStatus::Pending, InterRequestStatus::Processing], true);
     }
 
     public function update(User $user, InterRequest $interRequest): bool

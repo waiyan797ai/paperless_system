@@ -10,7 +10,7 @@ export default function Tabs({ tabs, activeTab, onChange, className }) {
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
             activeTab === tab.id
-              ? 'bg-gold-600/15 text-gold-600 border border-gold-600/25 shadow-sm'
+              ? 'bg-gold-600/15 text-gold-700 dark:text-gold-300 border border-gold-600/25 shadow-sm'
               : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
           )}
         >

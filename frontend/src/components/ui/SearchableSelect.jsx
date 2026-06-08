@@ -122,7 +122,7 @@ export default function SearchableSelect({
                       className={cn(
                         'w-full px-4 py-2.5 text-left text-sm transition-colors',
                         String(opt.value) === String(value)
-                          ? 'bg-gold-600/15 text-gold-600 font-medium'
+                          ? 'bg-gold-600/15 text-gold-700 dark:text-gold-300 font-medium'
                           : 'text-[var(--text-primary)] hover:bg-[var(--bg-surface)]'
                       )}
                     >

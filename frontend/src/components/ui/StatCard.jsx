@@ -11,7 +11,7 @@ export default function StatCard({ title, value, icon: Icon, trend, trendLabel, 
       <div className="flex items-start justify-between relative">
         <div>
           <p className="text-sm font-medium text-[var(--text-muted)]">{title}</p>
-          <p className="text-3xl font-bold text-[var(--text-primary)] mt-2 font-display">{value}</p>
+          <p className="text-3xl font-bold text-[var(--text-primary)] mt-2 tracking-tight">{value}</p>
           {trendLabel && (
             <div className={cn(
               'flex items-center gap-1 mt-2 text-xs font-medium',

@@ -9,8 +9,8 @@
   --color-gold-600: #c9a227;
   --color-gold-500: #d4af37;
   --color-gold-400: #e0c158;
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-display: "Playfair Display", Georgia, serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 :root {
@@ -29,17 +29,18 @@
 }
 
 .dark {
+  color-scheme: dark;
   --bg-base: #0a1628;
-  --bg-surface: rgba(30, 58, 95, 0.45);
-  --bg-elevated: rgba(30, 58, 95, 0.65);
+  --bg-surface: rgba(30, 58, 95, 0.78);
+  --bg-elevated: rgba(36, 68, 108, 0.92);
   --bg-sidebar: rgba(10, 22, 40, 0.98);
-  --text-primary: #f7fafc;
-  --text-secondary: #cbd5e0;
-  --text-muted: #a0aec0;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-gold: rgba(212, 175, 55, 0.4);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
-  --shadow-gold: 0 0 24px rgba(212, 175, 55, 0.12);
+  --text-primary: #f8fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #b8c5d6;
+  --border-color: rgba(255, 255, 255, 0.14);
+  --border-gold: rgba(212, 175, 55, 0.45);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-gold: 0 0 24px rgba(212, 175, 55, 0.15);
 }
 
 * {
@@ -71,6 +72,7 @@ body:not(.dark) {
 
 .font-display {
   font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 .glass {

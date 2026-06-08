@@ -81,7 +81,7 @@ export function TablePagination({ page, totalPages, onPageChange, totalItems, pa
             className={cn(
               'px-3 py-1.5 text-sm rounded-lg transition-colors',
               p === page
-                ? 'bg-gold-600/20 text-gold-600 border border-gold-600/30 font-medium'
+                ? 'bg-gold-600/20 text-gold-700 dark:text-gold-300 border border-gold-600/30 font-medium'
                 : 'border border-[var(--border-color)] hover:bg-[var(--bg-surface)]'
             )}
           >

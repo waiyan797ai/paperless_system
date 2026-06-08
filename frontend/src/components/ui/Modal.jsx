@@ -45,7 +45,7 @@ export default function Modal({ open, onClose, title, description, children, siz
           >
             <div className="flex items-start justify-between p-6 border-b border-[var(--border-color)]">
               <div>
-                <h2 className="font-display text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
+                <h2 className="text-xl font-semibold text-[var(--text-primary)] tracking-tight">{title}</h2>
                 {description && (
                   <p className="text-sm text-[var(--text-muted)] mt-1">{description}</p>
                 )}

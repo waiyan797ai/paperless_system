@@ -7,7 +7,7 @@ export default function EmptyState({ icon: Icon = Inbox, title, description, act
       <div className="p-4 rounded-2xl bg-gold-600/10 border border-gold-600/20 mb-4">
         <Icon className="h-10 w-10 text-gold-600/70" />
       </div>
-      <h3 className="font-display text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
+      <h3 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">{title}</h3>
       {description && (
         <p className="text-sm text-[var(--text-muted)] mt-2 max-w-sm">{description}</p>
       )}

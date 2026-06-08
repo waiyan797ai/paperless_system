@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, Layers, Send, Tag, FileSpreadsheet,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import Logo from '../ui/Logo'
 import { hasRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -74,14 +75,15 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         collapsed ? 'w-[72px]' : 'w-64'
       )}
     >
-      <div className={cn('flex items-center gap-3 p-4 border-b border-[var(--border-color)]', collapsed && 'justify-center')}>
-        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-gold-600 to-gold-500 flex items-center justify-center shrink-0 shadow-lg shadow-gold-600/20">
-          <span className="text-primary-950 font-bold text-sm">29</span>
-        </div>
+      <div className={cn(
+        'flex items-center gap-2.5 px-3 py-3 border-b border-[var(--border-color)]',
+        collapsed && 'justify-center'
+      )}>
+        <Logo size="sm" />
         {!collapsed && (
-          <div className="overflow-hidden">
-            <h2 className="font-display text-sm font-bold text-white leading-tight">Office Management</h2>
-            <p className="text-[10px] text-gold-400/80 uppercase tracking-wider">Paperless System</p>
+          <div className="overflow-hidden min-w-0">
+            <h2 className="text-[13px] font-semibold text-white leading-tight tracking-tight">Office Management</h2>
+            <p className="text-[9px] text-gold-400/85 uppercase tracking-wider font-medium">Paperless System</p>
           </div>
         )}
       </div>
@@ -90,7 +92,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         {filteredGroups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/30">
+              <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">
                 {group.label}
               </p>
             )}
@@ -107,7 +109,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                         collapsed && 'justify-center px-2',
                         isActive
                           ? 'bg-gold-600/15 text-gold-400 border border-gold-600/25'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          : 'text-white/70 hover:text-white hover:bg-white/8'
                       )}
                       title={collapsed ? item.label : undefined}
                     >

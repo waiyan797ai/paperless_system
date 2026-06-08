@@ -59,4 +59,14 @@ class InterRequest extends Model
     {
         return $this->hasMany(InterRequestAttachment::class);
     }
+
+    public function steps(): HasMany
+    {
+        return $this->hasMany(InterRequestStep::class)->orderBy('created_at');
+    }
+
+    public function isOpen(): bool
+    {
+        return in_array($this->status, [InterRequestStatus::Pending, InterRequestStatus::Processing]);
+    }
 }

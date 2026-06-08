@@ -63,7 +63,7 @@ export default function PdfViewer({ src, fileName, className = '', height = 'min
     <iframe
       src={blobUrl}
       title={fileName || 'PDF document'}
-      className={`w-full rounded-xl border border-[var(--border-color)] bg-white ${height} ${className}`}
+      className={`w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] ${height} ${className}`}
     />
   )
 }

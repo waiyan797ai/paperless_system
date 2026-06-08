@@ -25,7 +25,7 @@ export default function ForgotPassword() {
       <Link to="/login" className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-6">
         <ArrowLeft className="h-4 w-4" /> Back to login
       </Link>
-      <h2 className="font-display text-2xl font-bold text-[var(--text-primary)]">Forgot Password</h2>
+      <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Forgot Password</h2>
       <p className="text-[var(--text-muted)] mt-1 mb-8">
         Enter your email and we&apos;ll send you a reset link.
       </p>
