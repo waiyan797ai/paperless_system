@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.local
+
+# Build
+frontend/dist/
+backend/public/hot
+backend/public/build
+
+# Storage
+backend/storage/*.key
+backend/storage/app/documents/*
+backend/storage/app/policies/*
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+
+# Database
+backend/database/*.sqlite
+backend/database/*.sqlite-journal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.phpunit.result.cache
+coverage/
