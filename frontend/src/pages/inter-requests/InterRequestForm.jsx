@@ -26,7 +26,7 @@ export default function InterRequestForm() {
   })
 
   useEffect(() => {
-    api.get('/inter-requests/assignable-users')
+    api.get('/inter-memos/assignable-users')
       .then(({ data }) => setAssignableUsers(data.data || []))
       .catch(() => addToast('Failed to load users', 'error'))
   }, [addToast])
@@ -34,7 +34,7 @@ export default function InterRequestForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.assigned_to) {
-      addToast('Please select a user to send the request to', 'warning')
+      addToast('Please select a user to send the memo to', 'warning')
       return
     }
     setLoading(true)
@@ -47,13 +47,13 @@ export default function InterRequestForm() {
       if (form.remark) formData.append('remark', form.remark)
       files.forEach((file) => formData.append('attachments[]', file))
 
-      const { data } = await api.post('/inter-requests', formData)
-      addToast(data.message || 'Inter-request submitted', 'success')
-      navigate(`/inter-requests/${data.data?.id}`)
+      const { data } = await api.post('/inter-memos', formData)
+      addToast(data.message || 'Inter-memo submitted', 'success')
+      navigate(`/inter-memos/${data.data?.id}`)
     } catch (err) {
       const errors = err.response?.data?.errors
       const firstError = errors && Object.values(errors).flat()[0]
-      addToast(firstError || err.response?.data?.message || 'Failed to submit request', 'error')
+      addToast(firstError || err.response?.data?.message || 'Failed to submit memo', 'error')
     } finally {
       setLoading(false)
     }
@@ -67,10 +67,10 @@ export default function InterRequestForm() {
 
   return (
     <PageTransition>
-      <button onClick={() => navigate('/inter-requests')} className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-4">
+      <button onClick={() => navigate('/inter-memos')} className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-4">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      <PageHeader title="New Inter-Request" subtitle="Send directly to a user — they can approve or forward with remarks" />
+      <PageHeader title="New Inter-Memo" subtitle="Send directly to a user — they can approve or forward with remarks" />
       <Card className="max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-5">
           <Input label="Subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required />
@@ -116,11 +116,12 @@ export default function InterRequestForm() {
           <FileUpload
             accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
             multiple
+            maxSize={30}
             onFilesSelected={setFiles}
           />
           <div className="flex gap-3">
-            <Button type="submit" variant="gold" loading={loading}>Submit Request</Button>
-            <Button type="button" variant="secondary" onClick={() => navigate('/inter-requests')}>Cancel</Button>
+            <Button type="submit" variant="gold" loading={loading}>Submit Memo</Button>
+            <Button type="button" variant="secondary" onClick={() => navigate('/inter-memos')}>Cancel</Button>
           </div>
         </form>
       </Card>

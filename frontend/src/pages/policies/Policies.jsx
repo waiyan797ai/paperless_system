@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FileText, Download, Pencil, Eye } from 'lucide-react'
+import { Plus, FileText, Download, Pencil, Eye, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
@@ -11,9 +11,10 @@ import Table, { TableHeader, TableBody, TableRow, TableHead, TableCell, TablePag
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import EmptyState from '../../components/ui/EmptyState'
 import api from '../../lib/api'
-import { hasRole } from '../../lib/auth'
+import { hasPermission } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDate, getStatusColor } from '../../lib/utils'
+import { useToast } from '../../components/ui/Toast'
 
 export default function Policies() {
   const [search, setSearch] = useState('')
@@ -23,9 +24,11 @@ export default function Policies() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState(null)
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isAdmin = hasRole(user, 'admin')
+  const { addToast } = useToast()
+  const canManage = hasPermission(user, 'policies.manage')
   const pageSize = 10
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function Policies() {
       setLoading(true)
       try {
         const params = { page, per_page: pageSize, search: search || undefined }
-        if (isAdmin && statusFilter) params.status = statusFilter
+        if (canManage && statusFilter) params.status = statusFilter
 
         const { data } = await api.get('/policies', { params })
         setPolicies(data.data?.data || [])
@@ -48,7 +51,24 @@ export default function Policies() {
 
     const timer = setTimeout(fetchPolicies, search ? 300 : 0)
     return () => clearTimeout(timer)
-  }, [page, search, statusFilter, isAdmin])
+  }, [page, search, statusFilter, canManage])
+
+  const handleDelete = async (e, policy) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete policy "${policy.title}"? This cannot be undone.`)) return
+
+    setDeletingId(policy.id)
+    try {
+      await api.delete(`/policies/${policy.id}`)
+      addToast('Policy deleted', 'success')
+      setPolicies((prev) => prev.filter((p) => p.id !== policy.id))
+      setTotalItems((prev) => Math.max(0, prev - 1))
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete policy', 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const handleDownload = async (e, policy) => {
     e.stopPropagation()
@@ -73,9 +93,9 @@ export default function Policies() {
     <PageTransition>
       <PageHeader
         title="Policies"
-        subtitle={isAdmin ? 'Manage organizational policies and guidelines' : 'View and download company policies'}
+        subtitle={canManage ? 'Manage organizational policies and guidelines' : 'View and download company policies'}
         actions={
-          isAdmin ? (
+          canManage ? (
             <Button variant="gold" onClick={() => navigate('/policies/new')}>
               <Plus className="h-4 w-4" /> New Policy
             </Button>
@@ -90,7 +110,7 @@ export default function Policies() {
             placeholder="Search policies..."
             className="max-w-sm"
           />
-          {isAdmin && (
+          {canManage && (
             <Select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
@@ -109,7 +129,7 @@ export default function Policies() {
           <EmptyState
             icon={FileText}
             title="No policies found"
-            description={isAdmin ? 'Create a new policy to get started.' : 'No published policies available yet.'}
+            description={canManage ? 'Create a new policy to get started.' : 'No published policies available yet.'}
           />
         ) : (
           <>
@@ -119,9 +139,9 @@ export default function Policies() {
                   <TableHead>Policy</TableHead>
                   <TableHead>Policy Type</TableHead>
                   <TableHead>Version</TableHead>
-                  {isAdmin && <TableHead>Status</TableHead>}
+                  {canManage && <TableHead>Status</TableHead>}
                   <TableHead>Updated</TableHead>
-                  <TableHead className="w-24">Actions</TableHead>
+                  <TableHead className={canManage ? 'w-36' : 'w-24'}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -144,7 +164,7 @@ export default function Policies() {
                     </TableCell>
                     <TableCell>{policy.policy_type?.title || '—'}</TableCell>
                     <TableCell><span className="font-mono text-sm">v{policy.version}</span></TableCell>
-                    {isAdmin && (
+                    {canManage && (
                       <TableCell>
                         <Badge variant={getStatusColor(policy.status)} dot>{policy.status}</Badge>
                       </TableCell>
@@ -168,14 +188,24 @@ export default function Policies() {
                             <Download className="h-4 w-4" />
                           </button>
                         )}
-                        {isAdmin && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/policies/${policy.id}/edit`) }}
-                            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-gold-600 hover:bg-gold-600/10 transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                        {canManage && (
+                          <>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/policies/${policy.id}/edit`) }}
+                              className="p-2 rounded-lg text-[var(--text-muted)] hover:text-gold-600 hover:bg-gold-600/10 transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDelete(e, policy)}
+                              disabled={deletingId === policy.id}
+                              className="p-2 rounded-lg text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </TableCell>

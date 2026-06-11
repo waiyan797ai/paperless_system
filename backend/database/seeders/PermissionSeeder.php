@@ -37,27 +37,18 @@ class PermissionSeeder extends Seeder
 
         $all = Permission::pluck('id')->all();
 
+        $managerPermissions = [
+            'dashboard.view', 'policies.view', 'policies.manage', 'form_requests.create',
+            'form_requests.dept_inbox', 'form_requests.forward_section', 'form_requests.section_inbox',
+            'form_requests.assign', 'form_requests.process', 'form_requests.approve',
+            'sections.manage', 'reports.view',
+        ];
+
         $roleMap = [
             UserRole::SuperAdmin->value => $all,
             UserRole::Admin->value => $all,
-            UserRole::DepartmentAdmin->value => [
-                'dashboard.view', 'policies.view', 'form_requests.create',
-                'form_requests.dept_inbox', 'form_requests.forward_section',
-                'form_requests.assign', 'form_requests.approve',
-                'sections.manage', 'reports.view',
-            ],
-            'department_head' => [
-                'dashboard.view', 'policies.view', 'form_requests.create',
-                'form_requests.dept_inbox', 'form_requests.forward_section',
-                'form_requests.assign', 'form_requests.approve',
-                'sections.manage', 'reports.view',
-            ],
-            UserRole::SectionAdmin->value => [
-                'dashboard.view', 'policies.view', 'form_requests.create',
-                'form_requests.section_inbox', 'form_requests.assign',
-                'form_requests.process', 'form_requests.approve',
-            ],
-            UserRole::Employee->value => [
+            UserRole::Manager->value => $managerPermissions,
+            UserRole::User->value => [
                 'dashboard.view', 'policies.view', 'form_requests.create',
                 'form_requests.process', 'form_requests.approve',
             ],

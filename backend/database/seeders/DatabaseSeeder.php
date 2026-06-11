@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\Department;
 use App\Models\FormTemplate;
+use App\Models\DocumentType;
 use App\Models\PolicyType;
 use App\Models\Role;
 use App\Models\Section;
@@ -20,9 +21,8 @@ class DatabaseSeeder extends Seeder
         $roles = [
             ['name' => UserRole::SuperAdmin->value, 'display_name' => 'Super Admin', 'description' => 'Full system access'],
             ['name' => UserRole::Admin->value, 'display_name' => 'Admin', 'description' => 'Administrative access'],
-            ['name' => UserRole::DepartmentAdmin->value, 'display_name' => 'Department Admin', 'description' => 'Department management'],
-            ['name' => UserRole::SectionAdmin->value, 'display_name' => 'Section Admin', 'description' => 'Section management'],
-            ['name' => UserRole::Employee->value, 'display_name' => 'Employee', 'description' => 'Standard employee access'],
+            ['name' => UserRole::Manager->value, 'display_name' => 'Manager', 'description' => 'Department and section management'],
+            ['name' => UserRole::User->value, 'display_name' => 'User', 'description' => 'Standard user access'],
         ];
 
         foreach ($roles as $role) {
@@ -30,9 +30,8 @@ class DatabaseSeeder extends Seeder
         }
 
         $adminRole = Role::where('name', UserRole::Admin->value)->first();
-        $deptAdminRole = Role::where('name', UserRole::DepartmentAdmin->value)->first();
-        $sectionAdminRole = Role::where('name', UserRole::SectionAdmin->value)->first();
-        $employeeRole = Role::where('name', UserRole::Employee->value)->first();
+        $managerRole = Role::where('name', UserRole::Manager->value)->first();
+        $userRole = Role::where('name', UserRole::User->value)->first();
 
         $hr = Department::firstOrCreate(
             ['code' => 'HR'],
@@ -59,6 +58,18 @@ class DatabaseSeeder extends Seeder
 
         foreach ($policyTypes as $type) {
             PolicyType::firstOrCreate(['code' => $type['code']], $type);
+        }
+
+        $documentTypes = [
+            ['code' => 'REPORT', 'title' => 'Report'],
+            ['code' => 'MANUAL', 'title' => 'Manual'],
+            ['code' => 'POLICY', 'title' => 'Policy'],
+            ['code' => 'FORM', 'title' => 'Form'],
+            ['code' => 'MEMO', 'title' => 'Memo'],
+        ];
+
+        foreach ($documentTypes as $type) {
+            DocumentType::firstOrCreate(['code' => $type['code']], $type);
         }
 
         $hrRecruitment = Section::firstOrCreate(
@@ -90,13 +101,13 @@ class DatabaseSeeder extends Seeder
             ['email' => 'hr.head@29.com'],
             [
                 'employee_id' => 'EMP-002',
-                'name' => 'HR Department Admin',
+                'name' => 'HR Manager',
                 'password' => Hash::make('password'),
                 'phone' => '09123456790',
                 'department_id' => $hr->id,
                 'section_id' => null,
-                'position' => 'Department Admin',
-                'role_id' => $deptAdminRole->id,
+                'position' => 'Manager',
+                'role_id' => $managerRole->id,
                 'status' => UserStatus::Active,
             ]
         );
@@ -105,13 +116,13 @@ class DatabaseSeeder extends Seeder
             ['email' => 'approver@29.com'],
             [
                 'employee_id' => 'EMP-003',
-                'name' => 'HR Section Admin',
+                'name' => 'HR Section Manager',
                 'password' => Hash::make('password'),
                 'phone' => '09123456791',
                 'department_id' => $hr->id,
                 'section_id' => $hrRecruitment->id,
-                'position' => 'Section Admin',
-                'role_id' => $sectionAdminRole->id,
+                'position' => 'Manager',
+                'role_id' => $managerRole->id,
                 'status' => UserStatus::Active,
             ]
         );
@@ -127,7 +138,7 @@ class DatabaseSeeder extends Seeder
                 'section_id' => $hrRecruitment->id,
                 'position' => 'Staff',
                 'approver_id' => null,
-                'role_id' => $employeeRole->id,
+                'role_id' => $userRole->id,
                 'status' => UserStatus::Active,
             ]
         );
@@ -143,7 +154,7 @@ class DatabaseSeeder extends Seeder
                 'section_id' => $itSupport->id,
                 'position' => 'IT Staff',
                 'approver_id' => null,
-                'role_id' => $employeeRole->id,
+                'role_id' => $userRole->id,
                 'status' => UserStatus::Active,
             ]
         );

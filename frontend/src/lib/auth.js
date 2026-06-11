@@ -42,12 +42,14 @@ export function normalizeRole(role) {
   const map = {
     super_admin: 'admin',
     admin: 'admin',
+    manager: 'department',
     department_admin: 'department',
     department_head: 'department',
     department: 'department',
     section_admin: 'section',
     section: 'section',
     approver: 'section',
+    user: 'employee',
     employee: 'employee',
   }
   return map[name] || 'employee'
@@ -66,17 +68,36 @@ function extractPermissionSlugs(user) {
   return []
 }
 
+export function avatarUrl(path) {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+    return path
+  }
+  return `/storage/${path}`
+}
+
 export function normalizeUser(user) {
   if (!user) return null
   const backendRoleName =
     user.roleName ||
     (typeof user.role === 'object' ? user.role?.name : null)
+  let normalized = normalizeRole(backendRoleName || user.role)
+
+  if (['manager', 'section_admin'].includes(backendRoleName) && (user.section_id || user.section?.id)) {
+    normalized = 'section'
+  } else if (['manager', 'department_admin', 'department_head'].includes(backendRoleName)) {
+    normalized = 'department'
+  } else if (['user', 'employee'].includes(backendRoleName)) {
+    normalized = 'employee'
+  }
+
   return {
     ...user,
-    role: normalizeRole(backendRoleName || user.role),
+    role: normalized,
     roleName: backendRoleName || normalizeRole(user.role),
     departmentName: user.department?.name || user.department_name,
     sectionName: user.section?.name || user.section_name,
+    avatarUrl: avatarUrl(user.avatar),
     permissions: extractPermissionSlugs(user),
   }
 }

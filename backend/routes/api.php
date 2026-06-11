@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\FormRequestController;
 use App\Http\Controllers\Api\FormTemplateController;
 use App\Http\Controllers\Api\InterRequestController;
@@ -30,6 +31,7 @@ Route::prefix('v1')->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/profile', [AuthController::class, 'profile']);
         Route::put('auth/profile', [AuthController::class, 'updateProfile']);
+        Route::post('auth/profile', [AuthController::class, 'updateProfile']);
         Route::post('auth/change-password', [AuthController::class, 'changePassword']);
 
         Route::get('dashboard', [DashboardController::class, 'index']);
@@ -58,14 +60,18 @@ Route::prefix('v1')->group(function () {
         Route::post('form-requests/{form_request}/return', [FormRequestController::class, 'returnForRevision']);
         Route::post('form-requests/{form_request}/comments', [FormRequestController::class, 'addComment']);
 
-        Route::get('inter-requests/assignable-users', [InterRequestController::class, 'assignableUsers']);
-        Route::apiResource('inter-requests', InterRequestController::class);
-        Route::get('inter-requests/{inter_request}/assignable-users', [InterRequestController::class, 'assignableUsers']);
-        Route::post('inter-requests/{inter_request}/forward', [InterRequestController::class, 'forward']);
-        Route::post('inter-requests/{inter_request}/approve', [InterRequestController::class, 'approve']);
-        Route::post('inter-requests/{inter_request}/comments', [InterRequestController::class, 'addComment']);
-        Route::post('inter-requests/{inter_request}/attachments', [InterRequestController::class, 'addAttachment']);
-        Route::get('inter-requests/{inter_request}/attachments/{attachment}/download', [InterRequestController::class, 'downloadAttachment']);
+        Route::get('inter-memos/assignable-users', [InterRequestController::class, 'assignableUsers']);
+        Route::apiResource('inter-memos', InterRequestController::class)->parameters([
+            'inter-memos' => 'inter_request',
+        ]);
+        Route::get('inter-memos/{inter_request}/assignable-users', [InterRequestController::class, 'assignableUsers']);
+        Route::post('inter-memos/{inter_request}/forward', [InterRequestController::class, 'forward']);
+        Route::post('inter-memos/{inter_request}/approve', [InterRequestController::class, 'approve']);
+        Route::post('inter-memos/{inter_request}/comments', [InterRequestController::class, 'addComment']);
+        Route::post('inter-memos/{inter_request}/attachments', [InterRequestController::class, 'addAttachment']);
+        Route::get('inter-memos/{inter_request}/attachments/{attachment}/download', [InterRequestController::class, 'downloadAttachment']);
+
+        Route::apiResource('document-types', DocumentTypeController::class);
 
         Route::post('documents/distribute', [DocumentController::class, 'storeAndDistribute']);
         Route::get('documents/distributions', [DocumentController::class, 'distributionHistory']);
@@ -86,10 +92,10 @@ Route::prefix('v1')->group(function () {
         Route::get('audit-logs', [AuditLogController::class, 'index'])
             ->middleware('role:super_admin,admin');
 
-        Route::prefix('reports')->middleware('role:super_admin,admin,department_admin,department_head')->group(function () {
+        Route::prefix('reports')->middleware('role:super_admin,admin,manager')->group(function () {
             Route::get('overview', [ReportController::class, 'overview']);
             Route::get('requests', [ReportController::class, 'requests']);
-            Route::get('inter-requests', [ReportController::class, 'interRequests']);
+            Route::get('inter-memos', [ReportController::class, 'interRequests']);
             Route::get('documents', [ReportController::class, 'documents']);
             Route::get('users', [ReportController::class, 'users']);
             Route::get('audit', [ReportController::class, 'audit']);

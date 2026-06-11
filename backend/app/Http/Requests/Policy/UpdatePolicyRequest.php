@@ -8,7 +8,7 @@ class UpdatePolicyRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->isAdminLevel();
+        return $this->user()->hasPermission('policies.manage');
     }
 
     public function rules(): array
@@ -21,7 +21,7 @@ class UpdatePolicyRequest extends FormRequest
             'effective_date' => ['nullable', 'date'],
             'status' => ['nullable', 'in:active,inactive,archived'],
             'approved_by' => ['nullable', 'string', 'max:255'],
-            'file' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
+            'file' => ['nullable', 'file', 'mimes:pdf', 'max:30720'],
         ];
     }
 
@@ -30,7 +30,7 @@ class UpdatePolicyRequest extends FormRequest
         return [
             'file.file' => 'The uploaded file is invalid.',
             'file.mimes' => 'Only PDF files are allowed.',
-            'file.max' => 'The PDF may not be larger than 10 MB.',
+            'file.max' => 'The PDF may not be larger than 30 MB.',
             'file.uploaded' => 'The file failed to upload. It may exceed the server limit (2 MB by default). Restart the backend with: cd backend && ./serve.sh',
         ];
     }

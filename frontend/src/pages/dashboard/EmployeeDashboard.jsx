@@ -18,7 +18,12 @@ export default function EmployeeDashboard() {
       <PageHeader
         title={`Welcome, ${user?.name?.split(' ')[0]}`}
         subtitle="Your personal workspace overview"
-        actions={<Link to="/requests/new"><Button variant="gold">New Request</Button></Link>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link to="/requests/new"><Button variant="gold">New Request</Button></Link>
+            <Link to="/inter-memos/new"><Button variant="secondary">New Inter-Memo</Button></Link>
+          </div>
+        }
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <StatCard title="My Requests" value={myRequests.length || 3} icon={ClipboardList} trend={12} trendLabel="this month" />

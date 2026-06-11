@@ -64,3 +64,11 @@ export function getStatusColor(status) {
   }
   return map[status?.toLowerCase()] || 'default'
 }
+
+/** PDF text pasted into description breaks Myanmar encoding — show PDF preview instead. */
+export function shouldShowPolicyDescription(description) {
+  if (!description?.trim()) return false
+  if (description.length > 800) return false
+  if (/Page\s+\d+\s+of\s+\d+/i.test(description)) return false
+  return true
+}

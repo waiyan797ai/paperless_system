@@ -41,11 +41,11 @@ export default function InterRequestDetail() {
 
   const loadRequest = () => {
     setLoading(true)
-    return api.get(`/inter-requests/${id}`)
+    return api.get(`/inter-memos/${id}`)
       .then(({ data }) => setRequest(data.data))
       .catch(() => {
-        addToast('Request not found', 'error')
-        navigate('/inter-requests')
+        addToast('Memo not found', 'error')
+        navigate('/inter-memos')
       })
       .finally(() => setLoading(false))
   }
@@ -63,7 +63,7 @@ export default function InterRequestDetail() {
     setForwardUserId('')
     setForwardOpen(true)
     try {
-      const { data } = await api.get(`/inter-requests/${id}/assignable-users`)
+      const { data } = await api.get(`/inter-memos/${id}/assignable-users`)
       setAssignableUsers(data.data || [])
     } catch {
       addToast('Failed to load users', 'error')
@@ -78,7 +78,7 @@ export default function InterRequestDetail() {
     }
     setActionLoading(true)
     try {
-      const { data } = await api.post(`/inter-requests/${id}/forward`, {
+      const { data } = await api.post(`/inter-memos/${id}/forward`, {
         assigned_to: Number(forwardUserId),
         remark: remark.trim(),
       })
@@ -99,7 +99,7 @@ export default function InterRequestDetail() {
     }
     setActionLoading(true)
     try {
-      const { data } = await api.post(`/inter-requests/${id}/approve`, { remark: remark.trim() })
+      const { data } = await api.post(`/inter-memos/${id}/approve`, { remark: remark.trim() })
       addToast(data.message || 'Approved', 'success')
       setApproveOpen(false)
       setRequest(data.data)
@@ -112,7 +112,7 @@ export default function InterRequestDetail() {
 
   const handleDownload = async (attachment) => {
     try {
-      const { data } = await api.get(`/inter-requests/${id}/attachments/${attachment.id}/download`, { responseType: 'blob' })
+      const { data } = await api.get(`/inter-memos/${id}/attachments/${attachment.id}/download`, { responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([data]))
       const link = document.createElement('a')
       link.href = url
@@ -127,7 +127,7 @@ export default function InterRequestDetail() {
   if (loading) {
     return (
       <div className="py-12 flex justify-center">
-        <LoadingSpinner label="Loading request..." />
+        <LoadingSpinner label="Loading memo..." />
       </div>
     )
   }
@@ -144,7 +144,7 @@ export default function InterRequestDetail() {
 
   return (
     <PageTransition>
-      <button onClick={() => navigate('/inter-requests')} className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-4">
+      <button onClick={() => navigate('/inter-memos')} className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-4">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
 
@@ -167,7 +167,7 @@ export default function InterRequestDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
-          <CardTitle className="mb-4">Request Details</CardTitle>
+          <CardTitle className="mb-4">Memo Details</CardTitle>
           <div className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] mb-6">
             <div className="text-center flex-1">
               <p className="text-xs text-[var(--text-muted)] uppercase">From</p>
@@ -266,7 +266,7 @@ export default function InterRequestDetail() {
         }
       >
         <p className="text-sm text-[var(--text-muted)] mb-4">
-          Add a remark and select the next person who should handle this request.
+          Add a remark and select the next person who should handle this memo.
         </p>
         <SearchableSelect
           label="Forward To"
@@ -292,7 +292,7 @@ export default function InterRequestDetail() {
       <Modal
         open={approveOpen}
         onClose={() => setApproveOpen(false)}
-        title="Approve Request"
+        title="Approve Memo"
         footer={
           <>
             <Button variant="secondary" onClick={() => setApproveOpen(false)}>Cancel</Button>

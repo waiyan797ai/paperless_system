@@ -125,13 +125,13 @@ class User extends Authenticatable
 
     public function isDepartmentAdmin(): bool
     {
-        return $this->hasRole(UserRole::DepartmentAdmin, UserRole::DepartmentHead)
+        return ($this->hasRole(...UserRole::managerNames()) && $this->department_id)
             || Department::where('head_id', $this->id)->exists();
     }
 
     public function isSectionAdmin(): bool
     {
-        return $this->hasRole(UserRole::SectionAdmin)
+        return ($this->hasRole(...UserRole::managerNames()) && $this->section_id)
             || Section::where('head_id', $this->id)->exists();
     }
 

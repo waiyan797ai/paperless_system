@@ -30,9 +30,9 @@ export default function Login() {
 
   const demoAccounts = [
     { email: 'admin@29.com', role: 'Admin', password: 'password' },
-    { email: 'hr.head@29.com', role: 'Department Admin', password: 'password' },
-    { email: 'approver@29.com', role: 'Section Admin', password: 'password' },
-    { email: 'employee1@29.com', role: 'Employee', password: 'password' },
+    { email: 'hr.head@29.com', role: 'Manager', password: 'password' },
+    { email: 'approver@29.com', role: 'Manager', password: 'password' },
+    { email: 'employee1@29.com', role: 'User', password: 'password' },
   ]
 
   return (

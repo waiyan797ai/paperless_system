@@ -18,8 +18,8 @@ class SystemController extends Controller
                 'post_max_size' => $postMax,
                 'upload_max_bytes' => $this->toBytes($uploadMax),
                 'post_max_bytes' => $this->toBytes($postMax),
-                'recommended_min_bytes' => 20 * 1024 * 1024,
-                'ok' => $this->toBytes($uploadMax) >= 20 * 1024 * 1024,
+                'recommended_min_bytes' => 30 * 1024 * 1024,
+                'ok' => $this->toBytes($uploadMax) >= 30 * 1024 * 1024,
             ],
         ]);
     }

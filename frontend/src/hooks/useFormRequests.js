@@ -17,9 +17,30 @@ export function useFormRequestCounts(options = {}) {
   })
 }
 
-export function useFormRequestsList({ folder, page, search, pageSize = 10, enabled = true }) {
+export function useFormRequestsList({
+  folder,
+  page,
+  search,
+  formTemplateId,
+  departmentId,
+  sectionId,
+  dateFrom,
+  dateTo,
+  pageSize = 10,
+  enabled = true,
+}) {
   return useQuery({
-    queryKey: queryKeys.formRequests({ folder, page, search, pageSize }),
+    queryKey: queryKeys.formRequests({
+      folder,
+      page,
+      search,
+      formTemplateId,
+      departmentId,
+      sectionId,
+      dateFrom,
+      dateTo,
+      pageSize,
+    }),
     queryFn: async () => {
       const { data } = await api.get('/form-requests', {
         params: {
@@ -27,6 +48,11 @@ export function useFormRequestsList({ folder, page, search, pageSize = 10, enabl
           page,
           per_page: pageSize,
           search: search || undefined,
+          form_template_id: formTemplateId || undefined,
+          target_department_id: departmentId || undefined,
+          target_section_id: sectionId || undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
         },
       })
       return {

@@ -28,7 +28,7 @@ class RealtimeService
         if ($formRequest->target_department_id) {
             $deptAdmins = User::query()
                 ->where('department_id', $formRequest->target_department_id)
-                ->whereHas('role', fn ($q) => $q->whereIn('name', ['department_admin', 'department_head', 'admin', 'super_admin']))
+                ->whereHas('role', fn ($q) => $q->whereIn('name', ['manager', 'admin', 'super_admin']))
                 ->pluck('id')
                 ->all();
             $userIds = array_merge($userIds, $deptAdmins);
@@ -37,7 +37,7 @@ class RealtimeService
         if ($formRequest->review_department_id) {
             $reviewAdmins = User::query()
                 ->where('department_id', $formRequest->review_department_id)
-                ->whereHas('role', fn ($q) => $q->whereIn('name', ['department_admin', 'department_head', 'admin', 'super_admin']))
+                ->whereHas('role', fn ($q) => $q->whereIn('name', ['manager', 'admin', 'super_admin']))
                 ->pluck('id')
                 ->all();
             $userIds = array_merge($userIds, $reviewAdmins);
@@ -52,17 +52,25 @@ class RealtimeService
 
         $userIds = [$distributedBy];
 
-        $headIds = Department::whereIn('id', $departmentIds)->whereNotNull('head_id')->pluck('head_id');
-        $recipientAdminIds = User::query()
+        $recipientUserIds = User::query()
             ->whereIn('department_id', $departmentIds)
             ->where('status', 'active')
-            ->where(function ($q) use ($headIds) {
-                $q->whereHas('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head']))
-                    ->orWhereIn('id', $headIds);
-            })
             ->pluck('id')
             ->all();
-        $userIds = array_merge($userIds, $recipientAdminIds);
+        $userIds = array_merge($userIds, $recipientUserIds);
+
+        // Previous head-first flow — realtime bump for dept heads/admins only:
+        // $headIds = Department::whereIn('id', $departmentIds)->whereNotNull('head_id')->pluck('head_id');
+        // $recipientAdminIds = User::query()
+        //     ->whereIn('department_id', $departmentIds)
+        //     ->where('status', 'active')
+        //     ->where(function ($q) use ($headIds) {
+        //         $q->whereHas('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head']))
+        //             ->orWhereIn('id', $headIds);
+        //     })
+        //     ->pluck('id')
+        //     ->all();
+        // $userIds = array_merge($userIds, $recipientAdminIds);
 
         if ($document->uploader?->department_id) {
             $senderDeptUserIds = User::query()
@@ -92,7 +100,7 @@ class RealtimeService
             $deptAdminIds = User::query()
                 ->where('department_id', $document->uploader->department_id)
                 ->where('status', 'active')
-                ->whereHas('role', fn ($q) => $q->whereIn('name', ['department_admin', 'department_head']))
+                ->whereHas('role', fn ($q) => $q->whereIn('name', ['manager']))
                 ->pluck('id')
                 ->all();
             $allUserIds = array_merge($allUserIds, $deptAdminIds);

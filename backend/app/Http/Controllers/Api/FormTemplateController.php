@@ -25,7 +25,7 @@ class FormTemplateController extends Controller
             }
 
             return response()->json([
-                'data' => $query->with('targetDepartment:id,name,code')->get(),
+                'data' => $query->with(['targetDepartment:id,name,code', 'targetSection:id,name,code'])->get(),
             ]);
         }
 
@@ -33,7 +33,7 @@ class FormTemplateController extends Controller
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $query = FormTemplate::with(['targetDepartment', 'creator'])->withCount('formRequests');
+        $query = FormTemplate::with(['targetDepartment', 'targetSection', 'creator'])->withCount('formRequests');
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -58,7 +58,7 @@ class FormTemplateController extends Controller
 
         return response()->json([
             'message' => 'Form template created successfully.',
-            'data' => $template->load(['targetDepartment', 'creator']),
+            'data' => $template->load(['targetDepartment', 'targetSection', 'creator']),
         ], 201);
     }
 
@@ -69,7 +69,7 @@ class FormTemplateController extends Controller
         }
 
         return response()->json([
-            'data' => $formTemplate->load(['targetDepartment', 'creator']),
+            'data' => $formTemplate->load(['targetDepartment', 'targetSection', 'creator']),
         ]);
     }
 
@@ -81,7 +81,7 @@ class FormTemplateController extends Controller
 
         return response()->json([
             'message' => 'Form template updated successfully.',
-            'data' => $formTemplate->fresh(['targetDepartment', 'creator']),
+            'data' => $formTemplate->fresh(['targetDepartment', 'targetSection', 'creator']),
         ]);
     }
 

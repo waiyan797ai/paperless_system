@@ -20,7 +20,7 @@ class PolicyController extends Controller
     {
         $query = Policy::with(['creator', 'policyType', 'createdDepartment']);
 
-        if (! $request->user()->isAdminLevel()) {
+        if (! $request->user()->hasPermission('policies.manage')) {
             $query->where('status', 'active');
         }
 
@@ -28,7 +28,7 @@ class PolicyController extends Controller
             $query->where('policy_type_id', $request->policy_type_id);
         }
 
-        if ($request->filled('status') && $request->user()->isAdminLevel()) {
+        if ($request->filled('status') && $request->user()->hasPermission('policies.manage')) {
             $query->where('status', $request->status);
         }
 
@@ -70,7 +70,7 @@ class PolicyController extends Controller
 
     public function show(Request $request, Policy $policy): JsonResponse
     {
-        if (! $request->user()->isAdminLevel() && $policy->status !== 'active') {
+        if (! $request->user()->hasPermission('policies.manage') && $policy->status !== 'active') {
             return response()->json(['message' => 'Policy not found.'], 404);
         }
 
@@ -101,8 +101,12 @@ class PolicyController extends Controller
         ]);
     }
 
-    public function destroy(Policy $policy): JsonResponse
+    public function destroy(Request $request, Policy $policy): JsonResponse
     {
+        if (! $request->user()->hasPermission('policies.manage')) {
+            return response()->json(['message' => 'This action is unauthorized.'], 403);
+        }
+
         if ($policy->file_path) {
             Storage::disk('documents')->delete($policy->file_path);
         }
@@ -115,7 +119,7 @@ class PolicyController extends Controller
 
     public function download(Request $request, Policy $policy): JsonResponse|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        if (! $request->user()->isAdminLevel() && $policy->status !== 'active') {
+        if (! $request->user()->hasPermission('policies.manage') && $policy->status !== 'active') {
             return response()->json(['message' => 'Policy not found.'], 404);
         }
 

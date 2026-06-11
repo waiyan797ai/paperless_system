@@ -50,6 +50,26 @@ class FormRequestController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('target_department_id')) {
+            $query->where('target_department_id', $request->target_department_id);
+        }
+
+        if ($request->filled('target_section_id')) {
+            $query->where('target_section_id', $request->target_section_id);
+        }
+
+        if ($request->filled('form_template_id')) {
+            $query->where('form_template_id', $request->form_template_id);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function (Builder $q) use ($search) {
@@ -57,7 +77,9 @@ class FormRequestController extends Controller
                     ->orWhere('title', 'like', "%{$search}%")
                     ->orWhereHas('formTemplate', fn ($tq) => $tq
                         ->where('code', 'like', "%{$search}%")
-                        ->orWhere('title', 'like', "%{$search}%"));
+                        ->orWhere('title', 'like', "%{$search}%"))
+                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('assignedTo', fn ($aq) => $aq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -68,7 +90,7 @@ class FormRequestController extends Controller
     {
         $user = $request->user();
 
-        $folders = ['outbox', 'inbox', 'to_assign', 'section_inbox', 'assign', 'cc', 'approved', 'rejected'];
+        $folders = ['drafts', 'outbox', 'inbox', 'to_assign', 'section_inbox', 'assign', 'cc', 'approved', 'rejected'];
         $counts = [];
 
         foreach ($folders as $folder) {
@@ -83,6 +105,8 @@ class FormRequestController extends Controller
     protected function applyFolderFilter(Builder $query, string $folder, $user): void
     {
         match ($folder) {
+            'drafts' => $query->where('user_id', $user->id)
+                ->where('status', RequestStatus::Draft->value),
             'outbox' => $query->where('user_id', $user->id)
                 ->where('status', '!=', RequestStatus::Draft->value),
             'inbox' => $query->where('review_department_id', $user->department_id)
@@ -115,6 +139,7 @@ class FormRequestController extends Controller
             'user_id' => $request->user()->id,
             'form_template_id' => $template->id,
             'target_department_id' => $request->target_department_id,
+            'target_section_id' => $request->target_section_id,
             'type' => RequestType::General,
             'title' => $template->title,
             'description' => $template->description,

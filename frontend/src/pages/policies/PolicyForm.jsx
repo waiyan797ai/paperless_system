@@ -165,12 +165,12 @@ export default function PolicyForm() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={6}
               className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-gold-500/30 resize-y"
-              placeholder="Policy description..."
+              placeholder="Brief summary only (optional). Do not paste PDF text here — upload the PDF file below."
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">PDF Attachment</label>
-            <FileUpload accept=".pdf" onFilesSelected={(files) => setFile(files[0] || null)} />
+            <FileUpload accept=".pdf" maxSize={30} onFilesSelected={(files) => setFile(files[0] || null)} />
           </div>
           <div className="flex gap-3">
             <Button type="submit" variant="gold" loading={loading} disabled={!typeOptions.length}>

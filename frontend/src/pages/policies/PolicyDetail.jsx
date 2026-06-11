@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, FileText, Pencil } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Pencil, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -8,9 +8,9 @@ import Button from '../../components/ui/Button'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import PdfViewer from '../../components/ui/PdfViewer'
 import api from '../../lib/api'
-import { hasRole } from '../../lib/auth'
+import { hasPermission } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
-import { formatDate, getStatusColor } from '../../lib/utils'
+import { formatDate, getStatusColor, shouldShowPolicyDescription } from '../../lib/utils'
 import { useToast } from '../../components/ui/Toast'
 
 export default function PolicyDetail() {
@@ -18,9 +18,10 @@ export default function PolicyDetail() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { addToast } = useToast()
-  const isAdmin = hasRole(user, 'admin')
+  const canManage = hasPermission(user, 'policies.manage')
   const [policy, setPolicy] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     api.get(`/policies/${id}`)
@@ -31,6 +32,21 @@ export default function PolicyDetail() {
       })
       .finally(() => setLoading(false))
   }, [id, navigate, addToast])
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete policy "${policy.title}"? This cannot be undone.`)) return
+
+    setDeleting(true)
+    try {
+      await api.delete(`/policies/${id}`)
+      addToast('Policy deleted', 'success')
+      navigate('/policies')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete policy', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const handleDownload = async () => {
     try {
@@ -75,10 +91,15 @@ export default function PolicyDetail() {
                 <Download className="h-4 w-4" /> Download PDF
               </Button>
             )}
-            {isAdmin && (
-              <Button variant="secondary" onClick={() => navigate(`/policies/${id}/edit`)}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
+            {canManage && (
+              <>
+                <Button variant="secondary" onClick={() => navigate(`/policies/${id}/edit`)}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </>
             )}
           </div>
         }
@@ -87,12 +108,16 @@ export default function PolicyDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardTitle className="mb-4">Policy Details</CardTitle>
-          {policy.description ? (
-            <p className="text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+          {shouldShowPolicyDescription(policy.description) ? (
+            <p className="text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap" style={{ fontFamily: 'var(--font-myanmar)' }}>
               {policy.description}
             </p>
+          ) : policy.description?.trim() ? (
+            <p className="text-sm text-[var(--text-muted)]">
+              Full policy content is available in the PDF preview below. Do not paste PDF text into the description field when uploading.
+            </p>
           ) : (
-            <p className="text-[var(--text-muted)] italic">No description provided.</p>
+            <p className="text-[var(--text-muted)] italic">No description provided. View the PDF below for full policy content.</p>
           )}
 
           {!policy.file_path && (
@@ -126,7 +151,7 @@ export default function PolicyDetail() {
               <p className="text-[var(--text-muted)]">Version</p>
               <p className="font-medium mt-1 font-mono">v{policy.version}</p>
             </div>
-            {isAdmin && (
+            {canManage && (
               <div>
                 <p className="text-[var(--text-muted)]">Status</p>
                 <Badge variant={getStatusColor(policy.status)} dot className="mt-1">

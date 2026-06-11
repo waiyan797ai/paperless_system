@@ -14,13 +14,38 @@ import EmptyState from '../../components/ui/EmptyState'
 import api from '../../lib/api'
 import { useToast } from '../../components/ui/Toast'
 
-const emptyField = { name: '', label: '', type: 'text', required: true, options: [] }
+const emptyColumn = { name: '', label: '', type: 'text', required: false, options: [] }
+const emptyField = { name: '', label: '', type: 'text', required: true, options: [], columns: [{ ...emptyColumn }] }
+
+const fieldTypeOptions = [
+  { value: 'text', label: 'Text' },
+  { value: 'items', label: 'Items — multiple rows' },
+  { value: 'textarea', label: 'Textarea' },
+  { value: 'number', label: 'Number' },
+  { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Select' },
+]
+
+const emptyItemsField = {
+  name: 'items',
+  label: 'Items',
+  type: 'items',
+  required: true,
+  columns: [
+    { name: 'item_name', label: 'Item Name', type: 'text', required: true, options: [] },
+    { name: 'quantity', label: 'Quantity', type: 'number', required: true, options: [] },
+    { name: 'unit', label: 'Unit', type: 'text', required: false, options: [] },
+  ],
+}
+
+const columnTypeOptions = ['text', 'number', 'date', 'select']
 
 const emptyForm = {
   code: '',
   title: '',
   description: '',
   target_department_id: '',
+  target_section_id: '',
   status: 'active',
   fields: [{ ...emptyField }],
 }
@@ -30,6 +55,7 @@ export default function FormTemplates() {
   const [page, setPage] = useState(1)
   const [templates, setTemplates] = useState([])
   const [departments, setDepartments] = useState([])
+  const [sections, setSections] = useState([])
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -64,6 +90,16 @@ export default function FormTemplates() {
   }, [])
 
   useEffect(() => {
+    if (!form.target_department_id) {
+      setSections([])
+      return
+    }
+    api.get('/sections', { params: { department_id: form.target_department_id, per_page: 100 } })
+      .then(({ data }) => setSections(data.data?.data || data.data || []))
+      .catch(() => setSections([]))
+  }, [form.target_department_id])
+
+  useEffect(() => {
     const timer = setTimeout(fetchTemplates, search ? 300 : 0)
     return () => clearTimeout(timer)
   }, [page, search])
@@ -81,8 +117,16 @@ export default function FormTemplates() {
       title: template.title || '',
       description: template.description || '',
       target_department_id: template.target_department_id ? String(template.target_department_id) : '',
+      target_section_id: template.target_section_id ? String(template.target_section_id) : '',
       status: template.status || 'active',
-      fields: template.fields?.length ? template.fields : [{ ...emptyField }],
+      fields: template.fields?.length
+        ? template.fields.map((f) => ({
+            ...f,
+            columns: f.type === 'items'
+              ? (f.columns?.length ? f.columns : [{ ...emptyColumn }])
+              : f.columns,
+          }))
+        : [{ ...emptyField }],
     })
     setModalOpen(true)
   }
@@ -90,13 +134,50 @@ export default function FormTemplates() {
   const updateField = (index, key, value) => {
     setForm((prev) => {
       const fields = [...prev.fields]
-      fields[index] = { ...fields[index], [key]: value }
+      const next = { ...fields[index], [key]: value }
+      if (key === 'type' && value === 'items' && !next.columns?.length) {
+        next.columns = [{ ...emptyColumn }]
+      }
+      fields[index] = next
       return { ...prev, fields }
     })
   }
 
-  const addField = () => {
-    setForm((prev) => ({ ...prev, fields: [...prev.fields, { ...emptyField }] }))
+  const updateColumn = (fieldIndex, colIndex, key, value) => {
+    setForm((prev) => {
+      const fields = [...prev.fields]
+      const columns = [...(fields[fieldIndex].columns || [])]
+      columns[colIndex] = { ...columns[colIndex], [key]: value }
+      fields[fieldIndex] = { ...fields[fieldIndex], columns }
+      return { ...prev, fields }
+    })
+  }
+
+  const addColumn = (fieldIndex) => {
+    setForm((prev) => {
+      const fields = [...prev.fields]
+      fields[fieldIndex] = {
+        ...fields[fieldIndex],
+        columns: [...(fields[fieldIndex].columns || []), { ...emptyColumn }],
+      }
+      return { ...prev, fields }
+    })
+  }
+
+  const removeColumn = (fieldIndex, colIndex) => {
+    setForm((prev) => {
+      const fields = [...prev.fields]
+      const columns = (fields[fieldIndex].columns || []).filter((_, i) => i !== colIndex)
+      fields[fieldIndex] = { ...fields[fieldIndex], columns }
+      return { ...prev, fields }
+    })
+  }
+
+  const addField = (preset = null) => {
+    setForm((prev) => ({
+      ...prev,
+      fields: [...prev.fields, preset ? { ...preset, columns: preset.columns.map((c) => ({ ...c })) } : { ...emptyField }],
+    }))
   }
 
   const removeField = (index) => {
@@ -117,11 +198,33 @@ export default function FormTemplates() {
       const payload = {
         ...form,
         target_department_id: form.target_department_id || null,
-        fields: form.fields.map((f) => ({
-          ...f,
-          name: f.name || f.label.toLowerCase().replace(/\s+/g, '_'),
-          options: f.type === 'select' ? (f.options || []).filter(Boolean) : undefined,
-        })),
+        target_section_id: form.target_department_id && form.target_section_id ? form.target_section_id : null,
+        fields: form.fields.map((f) => {
+          const base = {
+            name: f.name || f.label.toLowerCase().replace(/\s+/g, '_'),
+            label: f.label,
+            type: f.type,
+            required: f.required,
+          }
+
+          if (f.type === 'items') {
+            return {
+              ...base,
+              columns: (f.columns || []).map((c) => ({
+                name: c.name || c.label.toLowerCase().replace(/\s+/g, '_'),
+                label: c.label,
+                type: c.type,
+                required: c.required,
+                options: c.type === 'select' ? (c.options || []).filter(Boolean) : undefined,
+              })),
+            }
+          }
+
+          return {
+            ...base,
+            options: f.type === 'select' ? (f.options || []).filter(Boolean) : undefined,
+          }
+        }),
       }
 
       if (editing) {
@@ -152,6 +255,15 @@ export default function FormTemplates() {
   }
 
   const deptOptions = departments.map((d) => ({ value: String(d.id), label: d.name }))
+  const sectionOptions = sections.map((s) => ({ value: String(s.id), label: s.name }))
+
+  const handleDepartmentChange = (deptId) => {
+    setForm((prev) => ({
+      ...prev,
+      target_department_id: deptId,
+      target_section_id: '',
+    }))
+  }
 
   return (
     <PageTransition>
@@ -177,6 +289,7 @@ export default function FormTemplates() {
                   <TableHead>Title</TableHead>
                   <TableHead>Fields</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Section</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-28">Actions</TableHead>
                 </TableRow>
@@ -188,6 +301,7 @@ export default function FormTemplates() {
                     <TableCell className="font-medium">{t.title}</TableCell>
                     <TableCell>{t.fields?.length || 0}</TableCell>
                     <TableCell>{t.target_department?.name || 'Any'}</TableCell>
+                    <TableCell>{t.target_section?.name || '—'}</TableCell>
                     <TableCell><Badge variant={t.status === 'active' ? 'success' : 'default'} dot>{t.status}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -204,27 +318,32 @@ export default function FormTemplates() {
         )}
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Form Template' : 'New Form Template'} footer={
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="xl" title={editing ? 'Edit Form Template' : 'New Form Template'} footer={
         <>
           <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
           <Button variant="gold" onClick={handleSave} loading={saving}>{editing ? 'Update' : 'Create'}</Button>
         </>
       }>
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="space-y-4 max-h-[75vh] overflow-y-auto overflow-x-visible pr-1">
           <Input label="Form Code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="LEAVE-001" required />
           <Input label="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Description</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-3 text-sm resize-y" />
           </div>
-          <Select label="Default Target Department (optional)" value={form.target_department_id} onChange={(e) => setForm({ ...form, target_department_id: e.target.value })} options={deptOptions} placeholder="Any department" />
+          <Select label="Default Target Department (optional)" value={form.target_department_id} onChange={(e) => handleDepartmentChange(e.target.value)} options={deptOptions} placeholder="Any department" />
+          <Select
+            label="Default Target Section (optional)"
+            value={form.target_section_id}
+            onChange={(e) => setForm({ ...form, target_section_id: e.target.value })}
+            options={sectionOptions}
+            placeholder={form.target_department_id ? 'Any section' : 'Select department first'}
+            disabled={!form.target_department_id}
+          />
           <Select label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} options={['active', 'inactive']} />
 
           <div className="pt-2">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">Form Fields</p>
-              <Button type="button" variant="secondary" size="sm" onClick={addField}><Plus className="h-3 w-3" /> Add Field</Button>
-            </div>
+            <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">Form Fields</p>
             <div className="space-y-3">
               {form.fields.map((field, index) => (
                 <div key={index} className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] space-y-3">
@@ -239,7 +358,7 @@ export default function FormTemplates() {
                     <Input label="Name (key)" value={field.name} onChange={(e) => updateField(index, 'name', e.target.value)} placeholder="auto from label" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <Select label="Type" value={field.type} onChange={(e) => updateField(index, 'type', e.target.value)} options={['text', 'textarea', 'number', 'date', 'select']} />
+                    <Select label="Type" value={field.type} onChange={(e) => updateField(index, 'type', e.target.value)} options={fieldTypeOptions} />
                     <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] mt-6">
                       <input type="checkbox" checked={field.required} onChange={(e) => updateField(index, 'required', e.target.checked)} />
                       Required
@@ -253,8 +372,53 @@ export default function FormTemplates() {
                       placeholder="Option A, Option B"
                     />
                   )}
+                  {field.type === 'items' && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs font-medium text-[var(--text-muted)]">Item columns (users can add multiple rows)</p>
+                      {(field.columns || []).map((col, colIndex) => (
+                        <div key={colIndex} className="p-2 rounded-lg border border-dashed border-[var(--border-color)] space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-[var(--text-muted)]">Column {colIndex + 1}</span>
+                            {(field.columns || []).length > 1 && (
+                              <button type="button" onClick={() => removeColumn(index, colIndex)} className="text-[var(--text-muted)] hover:text-red-500"><X className="h-3 w-3" /></button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input label="Label" value={col.label} onChange={(e) => updateColumn(index, colIndex, 'label', e.target.value)} />
+                            <Input label="Name (key)" value={col.name} onChange={(e) => updateColumn(index, colIndex, 'name', e.target.value)} placeholder="auto from label" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select label="Type" value={col.type} onChange={(e) => updateColumn(index, colIndex, 'type', e.target.value)} options={columnTypeOptions} />
+                            <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] mt-5">
+                              <input type="checkbox" checked={col.required} onChange={(e) => updateColumn(index, colIndex, 'required', e.target.checked)} />
+                              Required
+                            </label>
+                          </div>
+                          {col.type === 'select' && (
+                            <Input
+                              label="Options (comma separated)"
+                              value={(col.options || []).join(', ')}
+                              onChange={(e) => updateColumn(index, colIndex, 'options', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+                              placeholder="Option A, Option B"
+                            />
+                          )}
+                        </div>
+                      ))}
+                      <Button type="button" variant="secondary" size="sm" onClick={() => addColumn(index)} className="w-full">
+                        <Plus className="h-3 w-3" /> Add Column
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+              <Button type="button" variant="secondary" size="sm" onClick={() => addField()} className="w-full">
+                <Plus className="h-3 w-3" /> Add Field
+              </Button>
+              <Button type="button" variant="gold" size="sm" onClick={() => addField(emptyItemsField)} className="w-full">
+                <Plus className="h-3 w-3" /> Add Item List
+              </Button>
             </div>
           </div>
         </div>

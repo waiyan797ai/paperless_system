@@ -14,6 +14,7 @@ use App\Models\Department;
 use App\Models\Document;
 use App\Models\DocumentDepartmentRecipient;
 use App\Models\DocumentDistribution;
+use App\Models\DocumentType;
 use App\Models\DocumentUserForward;
 use App\Models\User;
 use App\Services\AuditService;
@@ -37,33 +38,70 @@ class DocumentController extends Controller
         $user = $request->user();
         $query = Document::with([
             'uploader.department',
+            'documentType',
             'distributions.recipients.department',
             'userForwards.user',
         ]);
 
-        if (! $user->isAdminLevel()) {
-            $query->where(function ($q) use ($user) {
-                $q->whereHas('uploader', fn ($uq) => $uq->where('department_id', $user->department_id));
+        $direction = $request->input('direction', 'incoming');
 
-                if ($user->isDepartmentAdmin()) {
+        if ($direction === 'outgoing') {
+            $query->where('uploaded_by', $user->id);
+        } elseif (! $user->isAdminLevel()) {
+            $query->where('uploaded_by', '!=', $user->id)
+                ->where(function ($q) use ($user) {
+                    if ($user->isDepartmentAdmin()) {
+                        $q->whereHas(
+                            'distributions.recipients',
+                            fn ($rq) => $rq->where('department_id', $user->department_id)
+                        );
+                    }
+
+                    $q->orWhereHas('userForwards', fn ($fq) => $fq->where('user_id', $user->id));
+                });
+        }
+
+        if ($request->filled('document_type_id')) {
+            $query->where('document_type_id', $request->document_type_id);
+        } elseif ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('department_id')) {
+            $departmentId = (int) $request->department_id;
+            $query->where(function ($q) use ($departmentId, $direction) {
+                $q->whereHas(
+                    'distributions.recipients',
+                    fn ($rq) => $rq->where('department_id', $departmentId)
+                );
+
+                if ($direction !== 'outgoing') {
                     $q->orWhereHas(
-                        'distributions.recipients',
-                        fn ($rq) => $rq->where('department_id', $user->department_id)
+                        'uploader',
+                        fn ($uq) => $uq->where('department_id', $departmentId)
                     );
                 }
-
-                $q->orWhereHas('userForwards', fn ($fq) => $fq->where('user_id', $user->id));
             });
         }
 
-        if ($request->filled('category')) {
-            $query->where('category', $request->category);
+        if ($request->filled('date_from')) {
+            $query->whereDate('updated_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('updated_at', '<=', $request->date_to);
         }
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(fn ($q) => $q->where('title', 'ilike', "%{$search}%")
-                ->orWhere('description', 'ilike', "%{$search}%"));
+                ->orWhere('description', 'ilike', "%{$search}%")
+                ->orWhere('file_name', 'ilike', "%{$search}%")
+                ->orWhereHas('uploader', fn ($uq) => $uq->where('name', 'ilike', "%{$search}%")));
         }
 
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 15))]);
@@ -72,11 +110,12 @@ class DocumentController extends Controller
     public function store(StoreDocumentRequest $request): JsonResponse
     {
         $file = $request->file('file');
+        $typeFields = $this->resolveDocumentTypeFields($request->document_type_id);
 
         $document = Document::create([
             'title' => $request->title,
             'description' => $request->description,
-            'category' => $request->category,
+            ...$typeFields,
             'version' => $request->version ?? '1.0',
             'uploaded_by' => $request->user()->id,
             'file_path' => $file->store('documents', 'documents'),
@@ -101,6 +140,7 @@ class DocumentController extends Controller
         return response()->json([
             'data' => $document->load([
                 'uploader',
+                'documentType',
                 'distributions.recipients.department',
                 'userForwards.user',
                 'userForwards.forwarder',
@@ -127,11 +167,13 @@ class DocumentController extends Controller
         $file = $request->file('file');
         $user = $request->user();
 
-        $document = DB::transaction(function () use ($request, $file, $user) {
+        $typeFields = $this->resolveDocumentTypeFields($request->document_type_id);
+
+        $document = DB::transaction(function () use ($request, $file, $user, $typeFields) {
             $document = Document::create([
                 'title' => $request->title,
                 'description' => $request->description,
-                'category' => $request->category,
+                ...$typeFields,
                 'version' => $request->version ?? '1.0',
                 'uploaded_by' => $user->id,
                 'file_path' => $file->store('documents', 'documents'),
@@ -168,14 +210,10 @@ class DocumentController extends Controller
     public function distributionHistory(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = DocumentDistribution::with(['document', 'distributor.department', 'recipients.department']);
+        $query = DocumentDistribution::with(['document.documentType', 'distributor.department', 'recipients.department']);
 
         if (! $user->isAdminLevel()) {
-            $query->where(function ($q) use ($user) {
-                $q->where('distributed_by', $user->id)
-                    ->orWhereHas('distributor', fn ($uq) => $uq->where('department_id', $user->department_id))
-                    ->orWhereHas('recipients', fn ($rq) => $rq->where('department_id', $user->department_id));
-            });
+            $query->where('distributed_by', $user->id);
         }
 
         return response()->json([
@@ -201,7 +239,7 @@ class DocumentController extends Controller
             ->where('id', '!=', $user->id)
             ->whereNotIn('id', $alreadyForwarded)
             ->where(function ($q) use ($departmentId) {
-                $q->whereDoesntHave('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head', 'admin', 'super_admin']))
+                $q->whereDoesntHave('role', fn ($rq) => $rq->whereIn('name', ['manager', 'admin', 'super_admin']))
                     ->whereNotIn('id', Department::where('id', $departmentId)->whereNotNull('head_id')->pluck('head_id'));
             })
             ->orderBy('name')
@@ -316,17 +354,58 @@ class DocumentController extends Controller
                 'status' => DocumentRecipientStatus::Sent,
             ]);
 
-            $admins = $this->departmentAdminUsers($departmentId);
-            $this->notificationService->notifyMany(
-                $admins,
-                NotificationType::Document,
-                'New Document for Your Department',
-                "Document \"{$document->title}\" has been sent to your department. Forward it to staff who need access.",
-                ['document_id' => $document->id, 'distribution_id' => $distribution->id]
-            );
+            $this->distributeToAllDepartmentUsers($document, $departmentId, $distributedBy, $notes);
+
+            // Previous head-first flow — notify dept head/admin only; staff waited for manual forward:
+            // $admins = $this->departmentAdminUsers($departmentId);
+            // $this->notificationService->notifyMany(
+            //     $admins,
+            //     NotificationType::Document,
+            //     'New Document for Your Department',
+            //     "Document \"{$document->title}\" has been sent to your department. Forward it to staff who need access.",
+            //     ['document_id' => $document->id, 'distribution_id' => $distribution->id]
+            // );
         }
 
         return $distribution;
+    }
+
+    protected function distributeToAllDepartmentUsers(
+        Document $document,
+        int $departmentId,
+        int $distributedBy,
+        ?string $notes = null,
+    ): void {
+        $users = User::query()
+            ->where('department_id', $departmentId)
+            ->where('status', 'active')
+            ->where('id', '!=', $distributedBy)
+            ->get();
+
+        foreach ($users as $recipient) {
+            DocumentUserForward::firstOrCreate(
+                [
+                    'document_id' => $document->id,
+                    'department_id' => $departmentId,
+                    'user_id' => $recipient->id,
+                ],
+                [
+                    'forwarded_by' => $distributedBy,
+                    'status' => DocumentRecipientStatus::Sent,
+                    'notes' => $notes,
+                ]
+            );
+        }
+
+        if ($users->isNotEmpty()) {
+            $this->notificationService->notifyMany(
+                $users,
+                NotificationType::Document,
+                'New Document for Your Department',
+                "Document \"{$document->title}\" has been sent to your department.",
+                ['document_id' => $document->id]
+            );
+        }
     }
 
     public function markViewed(Request $request, Document $document): JsonResponse
@@ -426,6 +505,19 @@ class DocumentController extends Controller
         return response()->json(['data' => ['distributions' => $distributions, 'forwards' => $forwards]]);
     }
 
+    protected function resolveDocumentTypeFields(?int $documentTypeId): array
+    {
+        $type = DocumentType::query()
+            ->where('id', $documentTypeId)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        return [
+            'document_type_id' => $type->id,
+            'category' => $type->title,
+        ];
+    }
+
     protected function departmentAdminUsers(int $departmentId)
     {
         $headIds = Department::where('id', $departmentId)->whereNotNull('head_id')->pluck('head_id');
@@ -434,7 +526,7 @@ class DocumentController extends Controller
             ->where('department_id', $departmentId)
             ->where('status', 'active')
             ->where(function ($q) use ($headIds) {
-                $q->whereHas('role', fn ($rq) => $rq->whereIn('name', ['department_admin', 'department_head']))
+                $q->whereHas('role', fn ($rq) => $rq->whereIn('name', ['manager']))
                     ->orWhereIn('id', $headIds);
             })
             ->get();

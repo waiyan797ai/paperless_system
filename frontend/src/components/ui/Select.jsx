@@ -7,7 +7,7 @@ const Select = forwardRef(function Select(
   ref
 ) {
   return (
-    <div className="w-full">
+    <div className={cn('w-full', className)}>
       {label && (
         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
           {label}
@@ -21,8 +21,7 @@ const Select = forwardRef(function Select(
             'px-4 py-2.5 pr-10 text-sm text-[var(--text-primary)]',
             'backdrop-blur-sm transition-all duration-200 cursor-pointer',
             'focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:border-gold-600/50',
-            error && 'border-red-500/50',
-            className
+            error && 'border-red-500/50'
           )}
           {...props}
         >

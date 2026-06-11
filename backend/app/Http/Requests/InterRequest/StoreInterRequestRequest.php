@@ -20,7 +20,7 @@ class StoreInterRequestRequest extends FormRequest
             'assigned_to' => ['required', 'integer', 'exists:users,id'],
             'remark' => ['nullable', 'string', 'max:2000'],
             'attachments' => ['nullable', 'array'],
-            'attachments.*' => ['file', 'max:10240'],
+            'attachments.*' => ['file', 'max:30720'],
         ];
     }
 

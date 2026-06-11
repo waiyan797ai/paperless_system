@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Building2, Users, FileText, ClipboardList,
-  ArrowLeftRight, FolderOpen, Bell, Shield, BarChart3,
+  ArrowLeftRight, Inbox, Bell, Shield, BarChart3,
   ChevronLeft, ChevronRight, Layers, Send, Tag, FileSpreadsheet,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
@@ -37,14 +37,15 @@ const navGroups = [
     items: [
       { to: '/requests', icon: ClipboardList, label: 'Requests', roles: ['admin', 'department', 'section', 'employee'] },
       { to: '/form-templates', icon: FileSpreadsheet, label: 'Form Templates', roles: ['admin'] },
-      { to: '/inter-requests', icon: ArrowLeftRight, label: 'Inter-Requests', roles: ['admin', 'department', 'section'] },
+      { to: '/inter-memos', icon: ArrowLeftRight, label: 'Inter-Memos', roles: ['admin', 'department', 'section', 'employee'] },
     ],
   },
   {
     label: 'Documents',
     items: [
-      { to: '/documents', icon: FolderOpen, label: 'Documents', roles: ['admin', 'department', 'section', 'employee'] },
-      { to: '/documents/distribution', icon: Send, label: 'Distribution', roles: ['admin', 'department'] },
+      { to: '/documents/incoming', icon: Inbox, label: 'Incoming mail', roles: ['admin', 'department', 'section', 'employee'] },
+      { to: '/documents/outgoing', icon: Send, label: 'Outgoing mail', roles: ['admin', 'department'] },
+      { to: '/document-types', icon: Tag, label: 'Document Types', roles: ['admin', 'department'] },
     ],
   },
   {

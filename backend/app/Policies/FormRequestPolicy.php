@@ -80,8 +80,8 @@ class FormRequestPolicy
 
     public function delete(User $user, FormRequest $formRequest): bool
     {
-        return ($formRequest->user_id === $user->id && $formRequest->status === RequestStatus::Draft)
-            || $user->isAdminLevel();
+        return $formRequest->user_id === $user->id
+            && $formRequest->status === RequestStatus::Draft;
     }
 
     public function submit(User $user, FormRequest $formRequest): bool

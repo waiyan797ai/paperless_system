@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, XCircle, RotateCcw, UserPlus, ArrowRightToLine, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, RotateCcw, UserPlus, ArrowRightToLine, Users, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -37,7 +37,7 @@ const actionLabels = {
 function getReturnModalTitle(status, role) {
   if (status === 'submitted') return 'Return to Requester (Department Review)'
   if (status === 'dept_approved') return 'Return to Requester'
-  if (status === 'assigned' && role === 'assignee') return 'Return to Department Admin'
+  if (status === 'assigned' && role === 'assignee') return 'Return to Manager'
   return 'Return Request'
 }
 
@@ -62,6 +62,7 @@ export default function RequestDetail() {
   const [assignToId, setAssignToId] = useState('')
   const [sections, setSections] = useState([])
   const [forwardSectionId, setForwardSectionId] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   useEffect(() => {
     if (isError) {
@@ -128,6 +129,7 @@ export default function RequestDetail() {
 
   const canEdit = isOwner && ['draft', 'returned'].includes(request?.status)
   const canSubmit = isOwner && ['draft', 'returned'].includes(request?.status)
+  const canDelete = isOwner && request?.status === 'draft'
 
   const openAssignModal = async () => {
     try {
@@ -254,6 +256,21 @@ export default function RequestDetail() {
     }
   }
 
+  const handleDelete = async () => {
+    setActionLoading(true)
+    try {
+      await api.delete(`/form-requests/${id}`)
+      addToast('Draft deleted', 'success')
+      setDeleteOpen(false)
+      await invalidateFormRequests()
+      navigate('/requests')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete draft', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (loading) {
     return <div className="py-12 flex justify-center"><LoadingSpinner label="Loading request..." /></div>
   }
@@ -289,6 +306,9 @@ export default function RequestDetail() {
             {canSubmit && (
               <Button variant="gold" loading={actionLoading} onClick={handleSubmit}>Submit</Button>
             )}
+            {canDelete && (
+              <Button variant="danger" onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" /> Delete</Button>
+            )}
             {canManageCc && (
               <Button variant="secondary" onClick={openCcModal}><Users className="h-4 w-4" /> Manage CC</Button>
             )}
@@ -323,14 +343,57 @@ export default function RequestDetail() {
         <Card className="lg:col-span-2">
           <CardTitle className="mb-4">Form Data</CardTitle>
           <div className="space-y-4">
-            {fields.map((field) => (
-              <div key={field.name}>
-                <p className="text-sm text-[var(--text-muted)]">{field.label}</p>
-                <p className="font-medium mt-1 text-[var(--text-primary)] whitespace-pre-wrap">
-                  {request.data?.[field.name] || '—'}
-                </p>
-              </div>
-            ))}
+            {fields.map((field) => {
+              const value = request.data?.[field.name]
+
+              if (field.type === 'items') {
+                const rows = Array.isArray(value) ? value : []
+                const columns = field.columns || []
+
+                return (
+                  <div key={field.name}>
+                    <p className="text-sm text-[var(--text-muted)] mb-2">{field.label}</p>
+                    {rows.length === 0 ? (
+                      <p className="text-sm text-[var(--text-muted)]">—</p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-xl border border-[var(--border-color)]">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-[var(--bg-surface)] border-b border-[var(--border-color)]">
+                              <th className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">#</th>
+                              {columns.map((col) => (
+                                <th key={col.name} className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">{col.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((row, index) => (
+                              <tr key={index} className="border-b border-[var(--border-color)] last:border-0">
+                                <td className="px-3 py-2 text-[var(--text-muted)]">{index + 1}</td>
+                                {columns.map((col) => (
+                                  <td key={col.name} className="px-3 py-2 font-medium text-[var(--text-primary)]">
+                                    {row[col.name] || '—'}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
+              return (
+                <div key={field.name}>
+                  <p className="text-sm text-[var(--text-muted)]">{field.label}</p>
+                  <p className="font-medium mt-1 text-[var(--text-primary)] whitespace-pre-wrap">
+                    {value || '—'}
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
           {request.actions?.length > 0 && (
@@ -450,7 +513,7 @@ export default function RequestDetail() {
         </div>
       </Modal>
 
-      <Modal open={ccOpen} onClose={() => setCcOpen(false)} title="Manage CC (Department Admin Only)" footer={
+      <Modal open={ccOpen} onClose={() => setCcOpen(false)} title="Manage CC (Manager Only)" footer={
         <>
           <Button variant="secondary" onClick={() => setCcOpen(false)}>Cancel</Button>
           <Button variant="gold" onClick={handleSaveCc} loading={actionLoading}>Save CC</Button>
@@ -498,6 +561,22 @@ export default function RequestDetail() {
           options={sections.map((s) => ({ value: String(s.id), label: s.name }))}
           placeholder={sections.length ? 'Select section...' : 'No sections available'}
         />
+      </Modal>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete Draft"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDelete} loading={actionLoading}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--text-secondary)]">
+          Delete this draft request? This cannot be undone.
+        </p>
       </Modal>
 
       <Modal

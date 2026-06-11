@@ -111,7 +111,7 @@ export default function Header({ onMenuClick, sidebarCollapsed }) {
             align="right"
             trigger={
               <button className="flex items-center gap-3 pl-2 pr-3 py-1.5 rounded-xl hover:bg-[var(--bg-surface)] transition-colors">
-                <Avatar name={user?.name} size="sm" />
+                <Avatar name={user?.name} src={user?.avatarUrl} size="sm" />
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium text-[var(--text-primary)] leading-tight">{user?.name}</p>
                   <p className="text-[10px] text-[var(--text-muted)] capitalize">{user?.role}</p>

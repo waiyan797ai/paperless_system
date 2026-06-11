@@ -18,12 +18,13 @@ const sizes = {
 }
 
 const Button = forwardRef(function Button(
-  { className, variant = 'primary', size = 'md', loading, disabled, children, ...props },
+  { className, variant = 'primary', size = 'md', loading, disabled, children, type = 'button', ...props },
   ref
 ) {
   return (
     <button
       ref={ref}
+      type={type}
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center gap-2 font-medium transition-all duration-200',

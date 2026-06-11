@@ -71,7 +71,6 @@ class RequestWorkflowService
                 'assigned_to_id' => null,
                 'assigned_by_id' => null,
                 'assigned_at' => null,
-                'target_section_id' => null,
             ]);
 
             $this->logAction($formRequest, $formRequest->user, 'submitted', $fromStatus, RequestStatus::Submitted->value);
@@ -147,22 +146,35 @@ class RequestWorkflowService
                 $formRequest->refresh();
                 $this->notifyReviewDepartment($formRequest);
             } else {
-                // Same-dept or cross-dept step 2: final dept approval → ready to assign.
+                // Same-dept or cross-dept step 2: final dept approval → assign or auto-forward to template section.
+                $formRequest->loadMissing('formTemplate');
+                $section = $this->resolveTargetSection($formRequest);
+
                 $formRequest->update([
-                    'status' => RequestStatus::DeptApproved,
+                    'status' => $section ? RequestStatus::AtSection : RequestStatus::DeptApproved,
                     'dept_reviewed_by_id' => $actor->id,
                     'dept_reviewed_at' => now(),
                     'review_department_id' => $formRequest->target_department_id,
+                    'target_section_id' => $section?->id,
                     'assigned_to_id' => null,
                     'assigned_by_id' => null,
                     'assigned_at' => null,
                 ]);
 
-                $this->logAction($formRequest, $actor, 'dept_approved', $from, RequestStatus::DeptApproved->value, null, null, $remark);
-                $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department']);
+                if ($section) {
+                    $this->logAction($formRequest, $actor, 'forwarded_section', $from, RequestStatus::AtSection->value, null, $section->id, $remark);
+                    $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department', 'auto_section' => $section->id]);
 
-                $message = "Request \"{$formRequest->title}\" was approved and is ready for assignment.";
-                $this->notifyTargetDepartmentForAssignment($formRequest, $message);
+                    if ($section->head) {
+                        $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to your section.");
+                    }
+                } else {
+                    $this->logAction($formRequest, $actor, 'dept_approved', $from, RequestStatus::DeptApproved->value, null, null, $remark);
+                    $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department']);
+
+                    $message = "Request \"{$formRequest->title}\" was approved and is ready for assignment.";
+                    $this->notifyTargetDepartmentForAssignment($formRequest, $message);
+                }
             }
 
             $updated = $formRequest->fresh($this->defaultRelations());
@@ -216,6 +228,21 @@ class RequestWorkflowService
 
             return $updated;
         });
+    }
+
+    protected function resolveTargetSection(FormRequest $formRequest): ?Section
+    {
+        $sectionId = $formRequest->target_section_id ?? $formRequest->formTemplate?->target_section_id;
+
+        if (! $sectionId) {
+            return null;
+        }
+
+        return Section::query()
+            ->where('id', $sectionId)
+            ->where('department_id', $formRequest->target_department_id)
+            ->with('head')
+            ->first();
     }
 
     public function forwardToSection(FormRequest $formRequest, User $actor, int $sectionId): FormRequest

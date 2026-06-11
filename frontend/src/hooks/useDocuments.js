@@ -4,9 +4,32 @@ import { queryKeys } from '../lib/queryKeys'
 
 const POLL_MS = 8000
 
-export function useDocumentsList({ page, search, category, pageSize = 10, enabled = true }) {
+export function useDocumentsList({
+  page,
+  search,
+  category,
+  documentTypeId,
+  departmentId,
+  status,
+  dateFrom,
+  dateTo,
+  direction = 'incoming',
+  pageSize = 10,
+  enabled = true,
+}) {
   return useQuery({
-    queryKey: queryKeys.documents({ page, search, category, pageSize }),
+    queryKey: queryKeys.documents({
+      page,
+      search,
+      category,
+      documentTypeId,
+      departmentId,
+      status,
+      dateFrom,
+      dateTo,
+      direction,
+      pageSize,
+    }),
     queryFn: async () => {
       const { data } = await api.get('/documents', {
         params: {
@@ -14,6 +37,12 @@ export function useDocumentsList({ page, search, category, pageSize = 10, enable
           per_page: pageSize,
           search: search || undefined,
           category: category || undefined,
+          document_type_id: documentTypeId || undefined,
+          department_id: departmentId || undefined,
+          status: status || undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+          direction,
         },
       })
       return {

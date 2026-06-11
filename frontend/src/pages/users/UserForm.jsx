@@ -31,6 +31,7 @@ export default function UserForm() {
     role_id: '',
     status: 'active',
     password: '',
+    password_confirmation: '',
   })
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function UserForm() {
           role_id: user.role_id ? String(user.role_id) : '',
           status: user.status || 'active',
           password: '',
+          password_confirmation: '',
         })
       })
       .catch(() => {
@@ -81,6 +83,11 @@ export default function UserForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (form.password && form.password !== form.password_confirmation) {
+      addToast('Passwords do not match', 'error')
+      return
+    }
+
     setSaving(true)
     try {
       const payload = {
@@ -99,6 +106,9 @@ export default function UserForm() {
         await api.post('/users', payload)
         addToast('User created', 'success')
       } else {
+        if (form.password) {
+          payload.password = form.password
+        }
         await api.put(`/users/${id}`, payload)
         addToast('User updated', 'success')
       }
@@ -173,16 +183,25 @@ export default function UserForm() {
               ]}
             />
           )}
-          {!isEdit && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Input
-              label="Password"
+              label={isEdit ? 'New Password (optional)' : 'Password'}
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              hint="Minimum 8 characters"
-              required
+              hint={isEdit ? 'Leave blank to keep current password' : 'Minimum 8 characters'}
+              required={!isEdit}
             />
-          )}
+            {(form.password || !isEdit) && (
+              <Input
+                label="Confirm Password"
+                type="password"
+                value={form.password_confirmation}
+                onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
+                required={!isEdit || Boolean(form.password)}
+              />
+            )}
+          </div>
           <div className="flex gap-3 pt-2">
             <Button type="submit" variant="gold" loading={saving}>{isEdit ? 'Update User' : 'Create User'}</Button>
             <Button type="button" variant="secondary" onClick={() => navigate('/users')}>Cancel</Button>

@@ -1,9 +1,9 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { getDashboardPath, canAccessRoute } from '../../lib/auth'
+import { getDashboardPath, canAccessRoute, hasPermission } from '../../lib/auth'
 import LoadingSpinner from '../ui/LoadingSpinner'
 
-export function ProtectedRoute({ children, roles }) {
+export function ProtectedRoute({ children, roles, permission }) {
   const { isAuthenticated, user, loading } = useAuth()
   const location = useLocation()
 
@@ -20,6 +20,10 @@ export function ProtectedRoute({ children, roles }) {
   }
 
   if (roles && !canAccessRoute(user, roles)) {
+    return <Navigate to={getDashboardPath(user?.role)} replace />
+  }
+
+  if (permission && !hasPermission(user, permission)) {
     return <Navigate to={getDashboardPath(user?.role)} replace />
   }
 

@@ -16,6 +16,7 @@ class Document extends Model
         'mime_type',
         'file_size',
         'category',
+        'document_type_id',
         'uploaded_by',
         'version',
         'status',
@@ -24,6 +25,11 @@ class Document extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function documentType(): BelongsTo
+    {
+        return $this->belongsTo(DocumentType::class);
     }
 
     public function distributions(): HasMany

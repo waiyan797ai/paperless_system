@@ -18,7 +18,7 @@ class StoreDocumentRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:100'],
             'version' => ['nullable', 'string', 'max:20'],
-            'file' => ['required', 'file', 'max:20480'],
+            'file' => ['required', 'file', 'max:30720'],
         ];
     }
 }

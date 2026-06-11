@@ -29,6 +29,10 @@ class UserController extends Controller
             $query->where('department_id', $request->department_id);
         }
 
+        if ($request->filled('section_id')) {
+            $query->where('section_id', $request->section_id);
+        }
+
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }

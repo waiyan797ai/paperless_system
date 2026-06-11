@@ -187,7 +187,7 @@ class ReportController extends Controller
 
     protected function authorizeAdmin(Request $request): void
     {
-        if (! $request->user()->hasRole(UserRole::SuperAdmin, UserRole::Admin, UserRole::DepartmentHead)) {
+        if (! $request->user()->hasRole(UserRole::SuperAdmin, UserRole::Admin, UserRole::Manager)) {
             abort(403, 'Unauthorized to view reports.');
         }
     }

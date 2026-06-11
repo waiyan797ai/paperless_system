@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, X } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
@@ -11,7 +11,91 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import api from '../../lib/api'
 import { useToast } from '../../components/ui/Toast'
 
+function ItemColumnInput({ column, value, onChange }) {
+  if (column.type === 'select') {
+    return (
+      <Select
+        label={column.label}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        options={(column.options || []).map((o) => ({ value: o, label: o }))}
+        placeholder={`Select ${column.label}`}
+        required={column.required}
+      />
+    )
+  }
+
+  return (
+    <Input
+      label={column.label}
+      type={column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'}
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      required={column.required}
+    />
+  )
+}
+
+function ItemsField({ field, value, onChange }) {
+  const rows = Array.isArray(value) ? value : []
+  const columns = field.columns || []
+
+  const emptyRow = () => {
+    const row = {}
+    columns.forEach((c) => { row[c.name] = '' })
+    return row
+  }
+
+  const addRow = () => onChange([...rows, emptyRow()])
+
+  const removeRow = (index) => onChange(rows.filter((_, i) => i !== index))
+
+  const updateCell = (rowIndex, colName, val) => {
+    onChange(rows.map((row, i) => (i === rowIndex ? { ...row, [colName]: val } : row)))
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+        {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {rows.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)] mb-3">No items yet. Click &quot;Add Item&quot; to start.</p>
+      ) : (
+        <div className="space-y-3 mb-3">
+          {rows.map((row, rowIndex) => (
+            <div key={rowIndex} className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-medium text-[var(--text-muted)]">Item {rowIndex + 1}</span>
+                <button type="button" onClick={() => removeRow(rowIndex)} className="text-[var(--text-muted)] hover:text-red-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {columns.map((col) => (
+                  <ItemColumnInput
+                    key={col.name}
+                    column={col}
+                    value={row[col.name]}
+                    onChange={(val) => updateCell(rowIndex, col.name, val)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Button type="button" variant="secondary" size="sm" onClick={addRow}>
+        <Plus className="h-3 w-3" /> Add Item
+      </Button>
+    </div>
+  )
+}
+
 function DynamicField({ field, value, onChange }) {
+  if (field.type === 'items') {
+    return <ItemsField field={field} value={value} onChange={onChange} />
+  }
   const common = {
     label: field.label,
     value: value || '',
@@ -60,7 +144,11 @@ export default function RequestForm() {
   const [departments, setDepartments] = useState([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [targetDepartmentId, setTargetDepartmentId] = useState('')
+  const [targetSectionId, setTargetSectionId] = useState('')
+  const [sections, setSections] = useState([])
   const [formData, setFormData] = useState({})
+  const [requestStatus, setRequestStatus] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const selectedTemplate = templates.find((t) => String(t.id) === String(selectedTemplateId))
 
@@ -81,7 +169,9 @@ export default function RequestForm() {
         const req = data.data
         setSelectedTemplateId(String(req.form_template_id || ''))
         setTargetDepartmentId(String(req.target_department_id || ''))
+        setTargetSectionId(req.target_section_id ? String(req.target_section_id) : '')
         setFormData(req.data || {})
+        setRequestStatus(req.status)
       })
       .catch(() => {
         addToast('Failed to load request', 'error')
@@ -91,12 +181,29 @@ export default function RequestForm() {
   }, [id, isEdit, navigate, addToast])
 
   useEffect(() => {
+    if (!targetDepartmentId) {
+      setSections([])
+      return
+    }
+    api.get('/sections', { params: { department_id: targetDepartmentId, per_page: 100 } })
+      .then(({ data }) => setSections(data.data?.data || data.data || []))
+      .catch(() => setSections([]))
+  }, [targetDepartmentId])
+
+  useEffect(() => {
     if (isEdit || !selectedTemplate) return
     if (selectedTemplate.target_department_id) {
       setTargetDepartmentId(String(selectedTemplate.target_department_id))
     }
+    if (selectedTemplate.target_section_id) {
+      setTargetSectionId(String(selectedTemplate.target_section_id))
+    } else {
+      setTargetSectionId('')
+    }
     const initial = {}
-    selectedTemplate.fields?.forEach((f) => { initial[f.name] = '' })
+    selectedTemplate.fields?.forEach((f) => {
+      initial[f.name] = f.type === 'items' ? [] : ''
+    })
     setFormData(initial)
   }, [selectedTemplateId, selectedTemplate, isEdit])
 
@@ -104,10 +211,34 @@ export default function RequestForm() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this draft request? This cannot be undone.')) return
+
+    setDeleting(true)
+    try {
+      await api.delete(`/form-requests/${id}`)
+      addToast('Draft deleted', 'success')
+      navigate('/requests')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete draft', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const saveRequest = async (submitAfter = false) => {
     if (!selectedTemplateId || !targetDepartmentId) {
       addToast('Please select form and target department', 'error')
       return
+    }
+
+    for (const field of selectedTemplate?.fields || []) {
+      if (field.type !== 'items' || !field.required) continue
+      const rows = formData[field.name]
+      if (!Array.isArray(rows) || rows.length === 0) {
+        addToast(`${field.label} must have at least one item`, 'error')
+        return
+      }
     }
 
     setLoading(true)
@@ -117,12 +248,14 @@ export default function RequestForm() {
       if (isEdit) {
         await api.put(`/form-requests/${id}`, {
           target_department_id: targetDepartmentId,
+          target_section_id: targetDepartmentId && targetSectionId ? targetSectionId : null,
           data: formData,
         })
       } else {
         const { data } = await api.post('/form-requests', {
           form_template_id: selectedTemplateId,
           target_department_id: targetDepartmentId,
+          target_section_id: targetDepartmentId && targetSectionId ? targetSectionId : null,
           data: formData,
         })
         requestId = data.data.id
@@ -156,6 +289,14 @@ export default function RequestForm() {
   }))
 
   const deptOptions = departments.map((d) => ({ value: String(d.id), label: d.name }))
+  const sectionOptions = sections.map((s) => ({ value: String(s.id), label: s.name }))
+  const canDelete = isEdit && requestStatus === 'draft'
+  const sectionLocked = !!selectedTemplate?.target_section_id && !isEdit
+
+  const handleDepartmentChange = (deptId) => {
+    setTargetDepartmentId(deptId)
+    setTargetSectionId('')
+  }
 
   return (
     <PageTransition>
@@ -192,11 +333,20 @@ export default function RequestForm() {
           <Select
             label="Target Department"
             value={targetDepartmentId}
-            onChange={(e) => setTargetDepartmentId(e.target.value)}
+            onChange={(e) => handleDepartmentChange(e.target.value)}
             options={deptOptions}
             placeholder="Select department..."
             required
             disabled={!!selectedTemplate?.target_department_id && !isEdit}
+          />
+
+          <Select
+            label="Target Section (optional)"
+            value={targetSectionId}
+            onChange={(e) => setTargetSectionId(e.target.value)}
+            options={sectionOptions}
+            placeholder={targetDepartmentId ? 'Any section' : 'Select department first'}
+            disabled={!targetDepartmentId || sectionLocked}
           />
 
           {selectedTemplate?.fields?.map((field) => (
@@ -208,11 +358,16 @@ export default function RequestForm() {
             />
           ))}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="gold" loading={loading}>Submit Request</Button>
             <Button type="button" variant="secondary" loading={loading} onClick={() => saveRequest(false)}>
               {isEdit ? 'Save Draft' : 'Save as Draft'}
             </Button>
+            {canDelete && (
+              <Button type="button" variant="danger" loading={deleting} onClick={handleDelete}>
+                <Trash2 className="h-4 w-4" /> Delete Draft
+              </Button>
+            )}
             <Button type="button" variant="secondary" onClick={() => navigate('/requests')}>Cancel</Button>
           </div>
         </form>

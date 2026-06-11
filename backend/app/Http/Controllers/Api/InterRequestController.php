@@ -56,10 +56,41 @@ class InterRequestController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->priority);
+        }
+
+        if ($request->filled('scope')) {
+            match ($request->scope) {
+                'sent' => $query->where('requester_id', $user->id),
+                'assigned' => $query->where('assigned_to', $user->id),
+                'open' => $query->whereIn('status', [
+                    InterRequestStatus::Pending->value,
+                    InterRequestStatus::Processing->value,
+                ]),
+                'closed' => $query->whereIn('status', [
+                    InterRequestStatus::Approved->value,
+                    InterRequestStatus::Rejected->value,
+                    InterRequestStatus::Completed->value,
+                ]),
+                default => null,
+            };
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(fn ($q) => $q->where('subject', 'ilike', "%{$search}%")
-                ->orWhere('reference_no', 'ilike', "%{$search}%"));
+                ->orWhere('reference_no', 'ilike', "%{$search}%")
+                ->orWhereHas('requester', fn ($rq) => $rq->where('name', 'ilike', "%{$search}%"))
+                ->orWhereHas('assignee', fn ($aq) => $aq->where('name', 'ilike', "%{$search}%")));
         }
 
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 15))]);
@@ -78,7 +109,7 @@ class InterRequestController extends Controller
 
         $interRequest = DB::transaction(function () use ($request, $requester, $assignee) {
             $interRequest = InterRequest::create([
-                'reference_no' => 'IR-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
+                'reference_no' => 'IM-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
                 'requester_id' => $requester->id,
                 'from_department_id' => $requester->department_id,
                 'to_department_id' => $assignee->department_id,
@@ -103,7 +134,7 @@ class InterRequestController extends Controller
                         'inter_request_id' => $interRequest->id,
                         'uploaded_by' => $request->user()->id,
                         'file_name' => $file->getClientOriginalName(),
-                        'file_path' => $file->store('inter-requests', 'documents'),
+                        'file_path' => $file->store('inter-memos', 'documents'),
                         'mime_type' => $file->getMimeType(),
                         'file_size' => $file->getSize(),
                     ]);
@@ -116,15 +147,15 @@ class InterRequestController extends Controller
         $this->notificationService->create(
             $assignee,
             NotificationType::InterRequest,
-            'Inter-Department Request Assigned',
-            "{$request->user()->name} sent you request: {$interRequest->subject}",
+            'Inter-Department Memo Assigned',
+            "{$request->user()->name} sent you a memo: {$interRequest->subject}",
             ['inter_request_id' => $interRequest->id]
         );
 
         $this->auditService->log(AuditAction::Created, $interRequest);
 
         return response()->json([
-            'message' => 'Inter-department request created.',
+            'message' => 'Inter-department memo created.',
             'data' => $interRequest->load(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'attachments', 'steps.user', 'steps.assignee']),
         ], 201);
     }
@@ -164,7 +195,7 @@ class InterRequestController extends Controller
     public function forward(ForwardInterRequestRequest $request, InterRequest $interRequest): JsonResponse
     {
         if (! $interRequest->isOpen()) {
-            return response()->json(['message' => 'This request is already closed.'], 422);
+            return response()->json(['message' => 'This memo is already closed.'], 422);
         }
 
         $assignee = User::where('id', $request->assigned_to)
@@ -194,15 +225,15 @@ class InterRequestController extends Controller
         $this->notificationService->create(
             $assignee,
             NotificationType::InterRequest,
-            'Inter-Request Forwarded to You',
-            "{$request->user()->name} forwarded a request: {$interRequest->subject}",
+            'Inter-Memo Forwarded to You',
+            "{$request->user()->name} forwarded a memo: {$interRequest->subject}",
             ['inter_request_id' => $interRequest->id]
         );
 
         $this->auditService->log(AuditAction::Updated, $interRequest);
 
         return response()->json([
-            'message' => 'Request forwarded successfully.',
+            'message' => 'Memo forwarded successfully.',
             'data' => $interRequest->fresh(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'steps.user', 'steps.assignee']),
         ]);
     }
@@ -210,7 +241,7 @@ class InterRequestController extends Controller
     public function approve(ApproveInterRequestRequest $request, InterRequest $interRequest): JsonResponse
     {
         if (! $interRequest->isOpen()) {
-            return response()->json(['message' => 'This request is already closed.'], 422);
+            return response()->json(['message' => 'This memo is already closed.'], 422);
         }
 
         DB::transaction(function () use ($request, $interRequest) {
@@ -231,15 +262,15 @@ class InterRequestController extends Controller
         $this->notificationService->create(
             $interRequest->requester,
             NotificationType::InterRequest,
-            'Inter-Request Approved',
-            "{$request->user()->name} approved your request: {$interRequest->subject}",
+            'Inter-Memo Approved',
+            "{$request->user()->name} approved your memo: {$interRequest->subject}",
             ['inter_request_id' => $interRequest->id]
         );
 
         $this->auditService->log(AuditAction::Updated, $interRequest);
 
         return response()->json([
-            'message' => 'Request approved successfully.',
+            'message' => 'Memo approved successfully.',
             'data' => $interRequest->fresh(['requester', 'fromDepartment', 'toDepartment', 'assignee.department', 'steps.user', 'steps.assignee']),
         ]);
     }
@@ -256,7 +287,7 @@ class InterRequestController extends Controller
         $this->auditService->log(AuditAction::Updated, $interRequest, null, $old, $interRequest->toArray());
 
         return response()->json([
-            'message' => 'Inter-department request updated.',
+            'message' => 'Inter-department memo updated.',
             'data' => $interRequest->fresh(['requester', 'fromDepartment', 'toDepartment']),
         ]);
     }
@@ -267,7 +298,7 @@ class InterRequestController extends Controller
         $this->auditService->log(AuditAction::Deleted, $interRequest);
         $interRequest->delete();
 
-        return response()->json(['message' => 'Inter-department request deleted.']);
+        return response()->json(['message' => 'Inter-department memo deleted.']);
     }
 
     public function addComment(StoreCommentRequest $request, InterRequest $interRequest): JsonResponse
@@ -288,14 +319,14 @@ class InterRequestController extends Controller
     {
         $this->authorize('update', $interRequest);
 
-        $request->validate(['file' => ['required', 'file', 'max:10240']]);
+        $request->validate(['file' => ['required', 'file', 'max:30720']]);
 
         $file = $request->file('file');
         $attachment = InterRequestAttachment::create([
             'inter_request_id' => $interRequest->id,
             'uploaded_by' => $request->user()->id,
             'file_name' => $file->getClientOriginalName(),
-            'file_path' => $file->store('inter-requests', 'documents'),
+            'file_path' => $file->store('inter-memos', 'documents'),
             'mime_type' => $file->getMimeType(),
             'file_size' => $file->getSize(),
         ]);

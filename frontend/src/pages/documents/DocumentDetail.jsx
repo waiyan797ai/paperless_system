@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Download, FileText } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
@@ -14,7 +14,10 @@ import { useToast } from '../../components/ui/Toast'
 
 export default function DocumentDetail() {
   const { id } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
+  const backPath = location.state?.from === 'outgoing' ? '/documents/outgoing' : '/documents/incoming'
+  const backLabel = location.state?.from === 'outgoing' ? 'Back to Outgoing mail' : 'Back to Incoming mail'
   const { addToast } = useToast()
   const [document, setDocument] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -27,10 +30,10 @@ export default function DocumentDetail() {
       })
       .catch(() => {
         addToast('Document not found or not available', 'error')
-        navigate('/documents')
+        navigate(backPath)
       })
       .finally(() => setLoading(false))
-  }, [id, navigate, addToast])
+  }, [id, navigate, addToast, backPath])
 
   const handleDownload = async () => {
     try {
@@ -61,10 +64,10 @@ export default function DocumentDetail() {
   return (
     <PageTransition>
       <button
-        onClick={() => navigate('/documents')}
+        onClick={() => navigate(backPath)}
         className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-gold-600 mb-4"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to Documents
+        <ArrowLeft className="h-4 w-4" /> {backLabel}
       </button>
 
       <PageHeader

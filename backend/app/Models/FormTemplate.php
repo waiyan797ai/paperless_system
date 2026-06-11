@@ -14,6 +14,7 @@ class FormTemplate extends Model
         'description',
         'fields',
         'target_department_id',
+        'target_section_id',
         'status',
         'created_by',
     ];
@@ -28,6 +29,11 @@ class FormTemplate extends Model
     public function targetDepartment(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'target_department_id');
+    }
+
+    public function targetSection(): BelongsTo
+    {
+        return $this->belongsTo(Section::class, 'target_section_id');
     }
 
     public function creator(): BelongsTo

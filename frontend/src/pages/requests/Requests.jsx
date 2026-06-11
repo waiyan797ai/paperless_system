@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Inbox, Send, UserCheck, CheckCircle, XCircle, Layers, ClipboardCheck, Users } from 'lucide-react'
+import { Plus, Inbox, Send, UserCheck, CheckCircle, XCircle, Layers, ClipboardCheck, Users, FileEdit, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import SearchInput from '../../components/ui/SearchInput'
+import Select from '../../components/ui/Select'
 import Badge from '../../components/ui/Badge'
 import Tabs from '../../components/ui/Tabs'
 import Table, { TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination } from '../../components/ui/Table'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import EmptyState from '../../components/ui/EmptyState'
+import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
 import { hasPermission } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
-import { useFormRequestCounts, useFormRequestsList } from '../../hooks/useFormRequests'
+import { useFormRequestCounts, useFormRequestsList, useInvalidateFormRequests } from '../../hooks/useFormRequests'
+import { useToast } from '../../components/ui/Toast'
 
 const allFolders = {
+  drafts: { label: 'Drafts', icon: FileEdit, permission: 'form_requests.create' },
   outbox: { label: 'Outbox', icon: Send, permission: 'form_requests.create' },
   inbox: { label: 'Inbox', icon: Inbox, permission: 'form_requests.dept_inbox' },
   to_assign: { label: 'To Assign', icon: ClipboardCheck, permission: 'form_requests.assign' },
@@ -29,10 +33,21 @@ const allFolders = {
 export default function Requests() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [activeTab, setActiveTab] = useState('outbox')
+  const [formTemplateFilter, setFormTemplateFilter] = useState('')
+  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [sectionFilter, setSectionFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [formTemplates, setFormTemplates] = useState([])
+  const [departments, setDepartments] = useState([])
+  const [sections, setSections] = useState([])
+  const [activeTab, setActiveTab] = useState('drafts')
   const [page, setPage] = useState(1)
+  const [deletingId, setDeletingId] = useState(null)
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { addToast } = useToast()
+  const invalidateFormRequests = useInvalidateFormRequests()
   const pageSize = 10
 
   const visibleFolders = useMemo(
@@ -51,14 +66,56 @@ export default function Requests() {
     return () => clearTimeout(timer)
   }, [search])
 
+  useEffect(() => {
+    Promise.all([
+      api.get('/form-templates', { params: { for_select: 1 } }),
+      api.get('/departments', { params: { per_page: 100 } }),
+    ]).then(([templatesRes, deptRes]) => {
+      setFormTemplates(templatesRes.data.data || [])
+      setDepartments(deptRes.data.data?.data || deptRes.data.data || [])
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!departmentFilter) {
+      setSections([])
+      return
+    }
+    api.get('/sections', { params: { department_id: departmentFilter, per_page: 100 } })
+      .then(({ data }) => setSections(data.data?.data || data.data || []))
+      .catch(() => setSections([]))
+  }, [departmentFilter])
+
+  const hasFilters = Boolean(formTemplateFilter || departmentFilter || sectionFilter || dateFrom || dateTo)
+
   const { data: counts = {} } = useFormRequestCounts()
   const { data, isLoading, isFetching } = useFormRequestsList({
     folder: activeTab,
     page,
     search: debouncedSearch,
+    formTemplateId: formTemplateFilter,
+    departmentId: departmentFilter,
+    sectionId: sectionFilter,
+    dateFrom,
+    dateTo,
     pageSize,
     enabled: Boolean(activeTab),
   })
+
+  const clearFilters = () => {
+    setFormTemplateFilter('')
+    setDepartmentFilter('')
+    setSectionFilter('')
+    setDateFrom('')
+    setDateTo('')
+    setPage(1)
+  }
+
+  const handleDepartmentChange = (deptId) => {
+    setDepartmentFilter(deptId)
+    setSectionFilter('')
+    setPage(1)
+  }
 
   const requests = data?.items || []
   const totalPages = data?.totalPages || 1
@@ -73,6 +130,23 @@ export default function Requests() {
 
   const folderMeta = allFolders[activeTab]
   const canCreate = hasPermission(user, 'form_requests.create')
+  const showDelete = activeTab === 'drafts'
+
+  const handleDelete = async (e, req) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete draft "${req.form_template?.title || req.title}"?`)) return
+
+    setDeletingId(req.id)
+    try {
+      await api.delete(`/form-requests/${req.id}`)
+      addToast('Draft deleted', 'success')
+      await invalidateFormRequests()
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete draft', 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <PageTransition>
@@ -98,15 +172,71 @@ export default function Requests() {
               <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">Updating...</span>
             )}
           </div>
-          <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1) }} placeholder="Search requests..." className="max-w-sm" />
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchInput
+              value={search}
+              onChange={(v) => { setSearch(v); setPage(1) }}
+              placeholder="Search requests..."
+              className="min-w-[160px] w-[200px] shrink-0"
+            />
+            <Select
+              value={formTemplateFilter}
+              onChange={(e) => { setFormTemplateFilter(e.target.value); setPage(1) }}
+              options={formTemplates.map((t) => ({ value: String(t.id), label: `${t.code} — ${t.title}` }))}
+              placeholder="All Forms"
+              className="w-[160px] shrink-0"
+            />
+            <Select
+              value={departmentFilter}
+              onChange={(e) => handleDepartmentChange(e.target.value)}
+              options={departments.map((d) => ({ value: String(d.id), label: d.name }))}
+              placeholder="All Departments"
+              className="w-[150px] shrink-0"
+            />
+            <Select
+              value={sectionFilter}
+              onChange={(e) => { setSectionFilter(e.target.value); setPage(1) }}
+              options={sections.map((s) => ({ value: String(s.id), label: s.name }))}
+              placeholder={departmentFilter ? 'All Sections' : 'Department first'}
+              disabled={!departmentFilter}
+              className="w-[140px] shrink-0"
+            />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
+              title="From Date"
+              aria-label="From Date"
+              className="w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
+              title="To Date"
+              aria-label="To Date"
+              className="w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
+            />
+            {hasFilters && (
+              <Button type="button" variant="secondary" size="sm" onClick={clearFilters} className="shrink-0">
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <div className="py-12 flex justify-center"><LoadingSpinner label="Loading requests..." /></div>
         ) : requests.length === 0 ? (
           <EmptyState
-            title={`No requests in ${folderMeta?.label || 'folder'}`}
-            description={canCreate ? 'Create a new request to get started.' : 'Try another folder.'}
+            title={hasFilters || debouncedSearch ? 'No matching requests' : `No requests in ${folderMeta?.label || 'folder'}`}
+            description={
+              hasFilters || debouncedSearch
+                ? 'Try adjusting your search or filters.'
+                : canCreate
+                  ? 'Create a new request to get started.'
+                  : 'Try another folder.'
+            }
             action={canCreate ? () => navigate('/requests/new') : undefined}
             actionLabel={canCreate ? 'New Request' : undefined}
           />
@@ -123,11 +253,12 @@ export default function Requests() {
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
+                  {showDelete && <TableHead className="w-12" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {requests.map((req) => (
-                  <TableRow key={req.id} onClick={() => navigate(`/requests/${req.id}`)} className="cursor-pointer">
+                  <TableRow key={req.id} onClick={() => navigate(showDelete ? `/requests/${req.id}/edit` : `/requests/${req.id}`)} className="cursor-pointer">
                     <TableCell><span className="font-mono text-gold-600 text-xs">{req.reference_no}</span></TableCell>
                     <TableCell className="font-medium">{req.form_template?.title || req.title}</TableCell>
                     <TableCell>{req.user?.name || '—'}</TableCell>
@@ -136,6 +267,19 @@ export default function Requests() {
                     <TableCell>{req.assigned_to?.name || '—'}</TableCell>
                     <TableCell><Badge variant={getStatusColor(req.status)} dot>{req.status}</Badge></TableCell>
                     <TableCell>{formatDate(req.submitted_at || req.created_at)}</TableCell>
+                    {showDelete && (
+                      <TableCell>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDelete(e, req)}
+                          disabled={deletingId === req.id}
+                          className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 disabled:opacity-50"
+                          title="Delete draft"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
