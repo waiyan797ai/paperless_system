@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useRef } from 'react'
 import {
   LayoutDashboard, Building2, Users, FileText, ClipboardList,
   ArrowLeftRight, Inbox, Bell, Shield, BarChart3,
@@ -62,11 +63,29 @@ const navGroups = [
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { user } = useAuth()
   const location = useLocation()
+  const navRef = useRef(null)
 
   const filteredGroups = navGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) => hasRole(user, ...item.roles)),
   })).filter((group) => group.items.length > 0)
+
+  // Preserve scroll position when route changes
+  useEffect(() => {
+    if (navRef.current) {
+      const scrollY = sessionStorage.getItem('sidebarScrollY')
+      if (scrollY) {
+        navRef.current.scrollTop = parseInt(scrollY, 10)
+      }
+    }
+  }, [location.pathname])
+
+  // Save scroll position before navigation
+  const handleNavClick = () => {
+    if (navRef.current) {
+      sessionStorage.setItem('sidebarScrollY', navRef.current.scrollTop.toString())
+    }
+  }
 
   const sidebarContent = (
     <aside
@@ -89,7 +108,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+      <nav ref={navRef} className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
         {filteredGroups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
@@ -104,7 +123,10 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   <li key={item.to}>
                     <NavLink
                       to={item.to}
-                      onClick={onMobileClose}
+                      onClick={() => {
+                        handleNavClick()
+                        onMobileClose()
+                      }}
                       className={cn(
                         'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                         collapsed && 'justify-center px-2',

@@ -309,6 +309,8 @@ class InterRequestController extends Controller
             'comment' => $request->comment,
         ]);
 
+        $this->auditService->log(AuditAction::Updated, $interRequest, $request->user(), null, ['action' => 'comment_added', 'comment_id' => $comment->id]);
+
         return response()->json([
             'message' => 'Comment added.',
             'data' => $comment->load('user'),
@@ -330,6 +332,8 @@ class InterRequestController extends Controller
             'mime_type' => $file->getMimeType(),
             'file_size' => $file->getSize(),
         ]);
+
+        $this->auditService->log(AuditAction::Updated, $interRequest, $request->user(), null, ['action' => 'attachment_added', 'attachment_id' => $attachment->id]);
 
         return response()->json([
             'message' => 'Attachment uploaded.',

@@ -38,6 +38,7 @@ class SectionController extends Controller
 
     public function store(StoreSectionRequest $request): JsonResponse
     {
+        $this->authorize('create', Section::class);
         $section = Section::create($request->validated());
         $this->auditService->log(AuditAction::Created, $section);
 
@@ -56,6 +57,7 @@ class SectionController extends Controller
 
     public function update(UpdateSectionRequest $request, Section $section): JsonResponse
     {
+        $this->authorize('update', $section);
         $old = $section->toArray();
         $section->update($request->validated());
         $this->auditService->log(AuditAction::Updated, $section, null, $old, $section->toArray());
@@ -68,10 +70,7 @@ class SectionController extends Controller
 
     public function destroy(Request $request, Section $section): JsonResponse
     {
-        $user = $request->user();
-        if (! $user->isAdminLevel() && ! $user->isDepartmentAdmin()) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorize('delete', $section);
 
         if ($section->users()->exists()) {
             return response()->json([

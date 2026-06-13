@@ -44,7 +44,7 @@ class DocumentPolicy
 
     public function create(User $user): bool
     {
-        return $user->isAdminLevel() || $user->isDepartmentHead();
+        return $user->isAdminLevel() || $user->isDepartmentAdmin();
     }
 
     public function update(User $user, Document $document): bool

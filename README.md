@@ -7,7 +7,9 @@ A modern enterprise-grade office management platform with paperless workflows, d
 | Layer | Technology |
 |-------|------------|
 | Backend | Laravel 11, Sanctum, Reverb (WebSocket) |
-| Frontend | React 19, Vite, Tailwind CSS v4 |
+| Web | React 19, Vite, Tailwind CSS v4 |
+| Desktop | Electron |
+| Mobile | React Native (Expo) — Android & iOS |
 | Database | PostgreSQL (SQLite supported for local dev) |
 | API | REST with role-based access control |
 
@@ -16,7 +18,9 @@ A modern enterprise-grade office management platform with paperless workflows, d
 ```
 management/
 ├── backend/          # Laravel 11 API
-├── frontend/         # React + Vite SPA
+├── frontend/         # React + Vite SPA (shared with desktop)
+├── desktop/          # Electron desktop app (macOS / Windows / Linux)
+├── mobile/           # React Native mobile app (Android / iOS)
 └── README.md
 ```
 
@@ -72,6 +76,28 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173)
+
+### Desktop App (Electron)
+
+```bash
+cd desktop
+npm install
+npm run dev          # dev: Vite + Electron window
+npm run dist         # build installer for current OS
+```
+
+See [desktop/README.md](desktop/README.md).
+
+### Mobile App (React Native / Expo)
+
+```bash
+cd mobile
+npm install
+cp .env.example .env   # set EXPO_PUBLIC_API_URL
+npm start              # scan QR with Expo Go, or use emulator
+```
+
+See [mobile/README.md](mobile/README.md).
 
 ### Demo Accounts
 

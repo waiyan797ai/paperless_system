@@ -70,9 +70,13 @@ function extractPermissionSlugs(user) {
 
 export function avatarUrl(path) {
   if (!path) return null
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
     return path
   }
+  if (path.startsWith('/')) {
+    return path
+  }
+  // If path is like 'avatars/filename.png', prepend /storage/
   return `/storage/${path}`
 }
 
@@ -141,6 +145,24 @@ export function hasPermission(user, permission) {
   }
 
   return false
+}
+
+export function isAdminLevel(user) {
+  if (!user) return false
+  const roleName = user.roleName || (typeof user.role === 'object' ? user.role?.name : user.role)
+  return roleName === 'super_admin' || roleName === 'admin'
+}
+
+export function isDepartmentAdmin(user) {
+  if (!user) return false
+  const roleName = user.roleName || (typeof user.role === 'object' ? user.role?.name : user.role)
+  return ['manager', 'department_admin', 'department_head'].includes(roleName) && user.department_id
+}
+
+export function isSectionAdmin(user) {
+  if (!user) return false
+  const roleName = user.roleName || (typeof user.role === 'object' ? user.role?.name : user.role)
+  return ['manager', 'section_admin'].includes(roleName) && user.section_id
 }
 
 export function canAccessRoute(user, allowedRoles) {

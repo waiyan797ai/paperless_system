@@ -48,6 +48,7 @@ class PolicyController extends Controller
 
     public function store(StorePolicyRequest $request): JsonResponse
     {
+        $this->authorize('create', Policy::class);
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
         $data['created_department_id'] = $request->user()->department_id;
@@ -79,6 +80,7 @@ class PolicyController extends Controller
 
     public function update(UpdatePolicyRequest $request, Policy $policy): JsonResponse
     {
+        $this->authorize('update', $policy);
         $data = $request->validated();
 
         if ($request->hasFile('file')) {
@@ -103,9 +105,7 @@ class PolicyController extends Controller
 
     public function destroy(Request $request, Policy $policy): JsonResponse
     {
-        if (! $request->user()->hasPermission('policies.manage')) {
-            return response()->json(['message' => 'This action is unauthorized.'], 403);
-        }
+        $this->authorize('delete', $policy);
 
         if ($policy->file_path) {
             Storage::disk('documents')->delete($policy->file_path);

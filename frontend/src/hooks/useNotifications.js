@@ -33,7 +33,18 @@ export function useNotifications(options = {}) {
     enabled: options.enabled !== false,
   })
 
-  const unreadCount = listQuery.data?.filter((n) => !n.read).length ?? 0
+  const unreadCountQuery = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: async () => {
+      const { data } = await api.get('/notifications', { params: { unread_only: true, per_page: 1 } })
+      return data.data?.total || data.data?.total || 0
+    },
+    refetchInterval: options.refetchInterval ?? POLL_MS,
+    staleTime: 1000,
+    enabled: options.enabled !== false,
+  })
+
+  const unreadCount = unreadCountQuery.data ?? 0
 
   const markAsReadMutation = useMutation({
     mutationFn: (id) => api.post(`/notifications/${id}/read`),

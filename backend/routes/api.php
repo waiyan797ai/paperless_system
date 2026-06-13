@@ -94,11 +94,13 @@ Route::prefix('v1')->group(function () {
 
         Route::prefix('reports')->middleware('role:super_admin,admin,manager')->group(function () {
             Route::get('overview', [ReportController::class, 'overview']);
+            Route::get('trends', [ReportController::class, 'trends']);
             Route::get('requests', [ReportController::class, 'requests']);
             Route::get('inter-memos', [ReportController::class, 'interRequests']);
             Route::get('documents', [ReportController::class, 'documents']);
             Route::get('users', [ReportController::class, 'users']);
             Route::get('audit', [ReportController::class, 'audit']);
+            Route::get('export', [ReportController::class, 'export']);
         });
     });
 });

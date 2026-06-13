@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.js",
+    "build:electron": "VITE_PLATFORM=electron VITE_API_URL=${VITE_API_URL:-http://127.0.0.1:8001/api/v1} vite build && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

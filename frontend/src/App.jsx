@@ -45,6 +45,7 @@ import DocumentTypes from './pages/documents/DocumentTypes'
 import Notifications from './pages/notifications/Notifications'
 import AuditLogs from './pages/audit/AuditLogs'
 import Reports from './pages/reports/Reports'
+import ReportDetail from './pages/reports/ReportDetail'
 import RolePermissions from './pages/admin/RolePermissions'
 
 function AppRoutes() {
@@ -104,6 +105,7 @@ function AppRoutes() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/audit-logs" element={<ProtectedRoute roles={['admin']}><AuditLogs /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute roles={['admin', 'department']}><Reports /></ProtectedRoute>} />
+          <Route path="/reports/:type" element={<ProtectedRoute roles={['admin', 'department']}><ReportDetail /></ProtectedRoute>} />
           <Route path="/role-permissions" element={<ProtectedRoute roles={['admin']}><RolePermissions /></ProtectedRoute>} />
 
           <Route path="/profile" element={<Profile />} />

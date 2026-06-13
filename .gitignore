@@ -10,6 +10,11 @@ vendor/
 frontend/dist/
 backend/public/hot
 backend/public/build
+desktop/release/
+desktop/node_modules/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
 
 # Storage
 backend/storage/*.key
@@ -32,3 +37,7 @@ backend/database/*.sqlite-journal
 # Testing
 .phpunit.result.cache
 coverage/
+
+
+desktop/
+mobile/

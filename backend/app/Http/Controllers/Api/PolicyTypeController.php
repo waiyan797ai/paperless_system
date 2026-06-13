@@ -50,6 +50,7 @@ class PolicyTypeController extends Controller
 
     public function store(StorePolicyTypeRequest $request): JsonResponse
     {
+        $this->authorize('create', PolicyType::class);
         $policyType = PolicyType::create($request->validated());
         $this->auditService->log(AuditAction::Created, $policyType);
 
@@ -70,6 +71,7 @@ class PolicyTypeController extends Controller
 
     public function update(UpdatePolicyTypeRequest $request, PolicyType $policyType): JsonResponse
     {
+        $this->authorize('update', $policyType);
         $old = $policyType->toArray();
         $policyType->update($request->validated());
         $this->auditService->log(AuditAction::Updated, $policyType, null, $old, $policyType->toArray());
@@ -82,9 +84,7 @@ class PolicyTypeController extends Controller
 
     public function destroy(PolicyType $policyType): JsonResponse
     {
-        if (! request()->user()->isAdminLevel()) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorize('delete', $policyType);
 
         if ($policyType->policies()->exists()) {
             return response()->json([

@@ -276,6 +276,7 @@ class RequestWorkflowService
             ]);
 
             $this->logAction($formRequest, $actor, 'forwarded_section', $from, RequestStatus::AtSection->value, null, $section->id);
+            $this->auditService->log(AuditAction::Updated, $formRequest, $actor, null, ['action' => 'forwarded_section', 'section_id' => $section->id]);
 
             if ($section->head) {
                 $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to your section.");
@@ -315,6 +316,7 @@ class RequestWorkflowService
             ]);
 
             $this->logAction($formRequest, $assigner, 'assigned', $from, RequestStatus::Assigned->value, $assignee->id, null, $remark);
+            $this->auditService->log(AuditAction::Updated, $formRequest, $assigner, null, ['action' => 'assigned', 'assigned_to_id' => $assignee->id, 'remark' => $remark]);
 
             $message = "Request \"{$formRequest->title}\" has been assigned to you.";
             if ($remark) {
@@ -379,6 +381,7 @@ class RequestWorkflowService
                     null,
                     'CC users updated'
                 );
+                $this->auditService->log(AuditAction::Updated, $formRequest, $actor, null, ['action' => 'cc_updated', 'user_ids' => $validIds]);
             }
 
             $updated = $formRequest->fresh($this->defaultRelations());

@@ -109,6 +109,7 @@ class DocumentController extends Controller
 
     public function store(StoreDocumentRequest $request): JsonResponse
     {
+        $this->authorize('create', Document::class);
         $file = $request->file('file');
         $typeFields = $this->resolveDocumentTypeFields($request->document_type_id);
 

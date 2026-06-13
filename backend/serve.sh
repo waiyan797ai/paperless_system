@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${PORT:-8001}"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 SERVER="${ROOT}/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
 
 # `php artisan serve` spawns a child `php -S` without upload ini flags.

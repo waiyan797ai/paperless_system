@@ -11,7 +11,7 @@ import Modal from '../../components/ui/Modal'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
-import { hasPermission, hasRole } from '../../lib/auth'
+import { hasPermission, hasRole, isAdminLevel } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { useFormRequestDetail, useInvalidateFormRequests } from '../../hooks/useFormRequests'
 import { useToast } from '../../components/ui/Toast'
@@ -129,7 +129,7 @@ export default function RequestDetail() {
 
   const canEdit = isOwner && ['draft', 'returned'].includes(request?.status)
   const canSubmit = isOwner && ['draft', 'returned'].includes(request?.status)
-  const canDelete = isOwner && request?.status === 'draft'
+  const canDelete = isAdminLevel(user) || (isOwner && request?.status !== 'approved')
 
   const openAssignModal = async () => {
     try {

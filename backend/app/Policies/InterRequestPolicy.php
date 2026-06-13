@@ -38,7 +38,7 @@ class InterRequestPolicy
         return in_array($user->department_id, [
             $interRequest->from_department_id,
             $interRequest->to_department_id,
-        ], true) && $user->isDepartmentHead();
+        ], true) && $user->isDepartmentAdmin();
     }
 
     public function create(User $user): bool
@@ -57,7 +57,7 @@ class InterRequestPolicy
         return $user->isAdminLevel()
             || $interRequest->requester_id === $user->id
             || $interRequest->assigned_to === $user->id
-            || ($user->isDepartmentHead() && $interRequest->to_department_id === $user->department_id);
+            || ($user->isDepartmentAdmin() && $interRequest->to_department_id === $user->department_id);
     }
 
     public function delete(User $user, InterRequest $interRequest): bool

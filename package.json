@@ -1,0 +1,12 @@
+{
+  "name": "oms-monorepo",
+  "private": true,
+  "description": "29 Office Management & Paperless System",
+  "scripts": {
+    "dev:api": "npm run start --prefix backend 2>/dev/null || (cd backend && ./serve.sh)",
+    "dev:web": "npm run dev --prefix frontend",
+    "dev:desktop": "npm run dev --prefix desktop",
+    "dev:mobile": "npm run start --prefix mobile",
+    "build:desktop": "npm run dist --prefix desktop"
+  }
+}

@@ -80,8 +80,14 @@ class FormRequestPolicy
 
     public function delete(User $user, FormRequest $formRequest): bool
     {
+        // Admins and Super Admins can delete at any time
+        if ($user->isAdminLevel()) {
+            return true;
+        }
+
+        // Creator can delete only if not approved yet
         return $formRequest->user_id === $user->id
-            && $formRequest->status === RequestStatus::Draft;
+            && $formRequest->status !== RequestStatus::Approved;
     }
 
     public function submit(User $user, FormRequest $formRequest): bool

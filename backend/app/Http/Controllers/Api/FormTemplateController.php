@@ -50,6 +50,7 @@ class FormTemplateController extends Controller
 
     public function store(StoreFormTemplateRequest $request): JsonResponse
     {
+        $this->authorize('create', FormTemplate::class);
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
 
@@ -75,6 +76,7 @@ class FormTemplateController extends Controller
 
     public function update(UpdateFormTemplateRequest $request, FormTemplate $formTemplate): JsonResponse
     {
+        $this->authorize('update', $formTemplate);
         $old = $formTemplate->toArray();
         $formTemplate->update($request->validated());
         $this->auditService->log(AuditAction::Updated, $formTemplate, null, $old, $formTemplate->toArray());
@@ -87,9 +89,7 @@ class FormTemplateController extends Controller
 
     public function destroy(FormTemplate $formTemplate): JsonResponse
     {
-        if (! request()->user()->isAdminLevel()) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorize('delete', $formTemplate);
 
         if ($formTemplate->formRequests()->exists()) {
             return response()->json([

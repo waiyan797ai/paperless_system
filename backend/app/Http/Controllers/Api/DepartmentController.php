@@ -42,6 +42,7 @@ class DepartmentController extends Controller
 
     public function store(StoreDepartmentRequest $request): JsonResponse
     {
+        $this->authorize('create', Department::class);
         $department = Department::create($request->validated());
         $this->auditService->log(AuditAction::Created, $department);
 
@@ -62,6 +63,7 @@ class DepartmentController extends Controller
 
     public function update(UpdateDepartmentRequest $request, Department $department): JsonResponse
     {
+        $this->authorize('update', $department);
         $old = $department->toArray();
         $department->update($request->validated());
         $this->auditService->log(AuditAction::Updated, $department, null, $old, $department->toArray());

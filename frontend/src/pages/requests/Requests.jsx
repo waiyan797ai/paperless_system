@@ -13,7 +13,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import EmptyState from '../../components/ui/EmptyState'
 import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
-import { hasPermission } from '../../lib/auth'
+import { hasPermission, isAdminLevel } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { useFormRequestCounts, useFormRequestsList, useInvalidateFormRequests } from '../../hooks/useFormRequests'
 import { useToast } from '../../components/ui/Toast'
@@ -130,19 +130,25 @@ export default function Requests() {
 
   const folderMeta = allFolders[activeTab]
   const canCreate = hasPermission(user, 'form_requests.create')
-  const showDelete = activeTab === 'drafts'
+
+  const canDeleteRequest = (req) => {
+    // Admins and Super Admins can delete at any time
+    if (isAdminLevel(user)) return true
+    // Creator can delete only if not approved yet
+    return req.user_id === user?.id && req.status !== 'approved'
+  }
 
   const handleDelete = async (e, req) => {
     e.stopPropagation()
-    if (!window.confirm(`Delete draft "${req.form_template?.title || req.title}"?`)) return
+    if (!window.confirm(`Delete request "${req.form_template?.title || req.title}"?`)) return
 
     setDeletingId(req.id)
     try {
       await api.delete(`/form-requests/${req.id}`)
-      addToast('Draft deleted', 'success')
+      addToast('Request deleted', 'success')
       await invalidateFormRequests()
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to delete draft', 'error')
+      addToast(err.response?.data?.message || 'Failed to delete request', 'error')
     } finally {
       setDeletingId(null)
     }
@@ -253,35 +259,38 @@ export default function Requests() {
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
-                  {showDelete && <TableHead className="w-12" />}
+                  <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {requests.map((req) => (
-                  <TableRow key={req.id} onClick={() => navigate(showDelete ? `/requests/${req.id}/edit` : `/requests/${req.id}`)} className="cursor-pointer">
-                    <TableCell><span className="font-mono text-gold-600 text-xs">{req.reference_no}</span></TableCell>
-                    <TableCell className="font-medium">{req.form_template?.title || req.title}</TableCell>
-                    <TableCell>{req.user?.name || '—'}</TableCell>
-                    <TableCell>{req.target_department?.name || '—'}</TableCell>
-                    <TableCell>{req.target_section?.name || '—'}</TableCell>
-                    <TableCell>{req.assigned_to?.name || '—'}</TableCell>
-                    <TableCell><Badge variant={getStatusColor(req.status)} dot>{req.status}</Badge></TableCell>
-                    <TableCell>{formatDate(req.submitted_at || req.created_at)}</TableCell>
-                    {showDelete && (
+                {requests.map((req) => {
+                  const canDelete = canDeleteRequest(req)
+                  return (
+                    <TableRow key={req.id} onClick={() => navigate(canDelete && req.status === 'draft' ? `/requests/${req.id}/edit` : `/requests/${req.id}`)} className="cursor-pointer">
+                      <TableCell><span className="font-mono text-gold-600 text-xs">{req.reference_no}</span></TableCell>
+                      <TableCell className="font-medium">{req.form_template?.title || req.title}</TableCell>
+                      <TableCell>{req.user?.name || '—'}</TableCell>
+                      <TableCell>{req.target_department?.name || '—'}</TableCell>
+                      <TableCell>{req.target_section?.name || '—'}</TableCell>
+                      <TableCell>{req.assigned_to?.name || '—'}</TableCell>
+                      <TableCell><Badge variant={getStatusColor(req.status)} dot>{req.status}</Badge></TableCell>
+                      <TableCell>{formatDate(req.submitted_at || req.created_at)}</TableCell>
                       <TableCell>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(e, req)}
-                          disabled={deletingId === req.id}
-                          className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 disabled:opacity-50"
-                          title="Delete draft"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDelete(e, req)}
+                            disabled={deletingId === req.id}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 disabled:opacity-50"
+                            title="Delete request"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </TableCell>
-                    )}
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
             <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={totalItems} pageSize={pageSize} />

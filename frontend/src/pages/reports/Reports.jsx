@@ -1,15 +1,67 @@
 import { Download, FileBarChart, TrendingUp, Users, FileText } from 'lucide-react'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { useNavigate } from 'react-router-dom'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import Select from '../../components/ui/Select'
 import StatCard from '../../components/ui/StatCard'
-import { chartData } from '../../lib/mockData'
+import { useQuery } from '@tanstack/react-query'
+import api from '../../lib/api'
 import { useState } from 'react'
 
 export default function Reports() {
+  const navigate = useNavigate()
   const [period, setPeriod] = useState('6m')
+
+  const { data: overview, isLoading: overviewLoading } = useQuery({
+    queryKey: ['reports', 'overview'],
+    queryFn: async () => {
+      const { data } = await api.get('/reports/overview')
+      return data.data
+    },
+  })
+
+  const { data: requestData, isLoading: requestLoading } = useQuery({
+    queryKey: ['reports', 'requests'],
+    queryFn: async () => {
+      const { data } = await api.get('/reports/requests')
+      return data.data
+    },
+  })
+
+  const { data: userData, isLoading: userLoading } = useQuery({
+    queryKey: ['reports', 'users'],
+    queryFn: async () => {
+      const { data } = await api.get('/reports/users')
+      return data.data
+    },
+  })
+
+  const { data: documentData, isLoading: documentLoading } = useQuery({
+    queryKey: ['reports', 'documents'],
+    queryFn: async () => {
+      const { data } = await api.get('/reports/documents')
+      return data.data
+    },
+  })
+
+  const { data: trendsData, isLoading: trendsLoading } = useQuery({
+    queryKey: ['reports', 'trends', period],
+    queryFn: async () => {
+      const months = period === '1m' ? 1 : period === '3m' ? 3 : period === '6m' ? 6 : 12
+      const { data } = await api.get('/reports/trends', { params: { months } })
+      return data.data
+    },
+  })
+
+  const handlePeriodChange = (value) => {
+    setPeriod(value)
+  }
+
+  const handleGenerateReport = (reportType) => {
+    navigate(`/reports/${reportType}`)
+  }
 
   return (
     <PageTransition>
@@ -18,7 +70,7 @@ export default function Reports() {
         subtitle="Generate and view system reports"
         actions={
           <div className="flex gap-2">
-            <Select value={period} onChange={(e) => setPeriod(e.target.value)} options={[
+            <Select value={period} onChange={(e) => handlePeriodChange(e.target.value)} options={[
               { value: '1m', label: 'Last Month' },
               { value: '3m', label: 'Last 3 Months' },
               { value: '6m', label: 'Last 6 Months' },
@@ -29,38 +81,84 @@ export default function Reports() {
         }
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        <StatCard title="Total Requests" value={299} icon={FileBarChart} trend={12} trendLabel="vs last period" />
-        <StatCard title="Approval Rate" value="87%" icon={TrendingUp} trend={3} trendLabel="improvement" />
-        <StatCard title="Active Users" value={486} icon={Users} trend={8} trendLabel="growth" />
-        <StatCard title="Documents Processed" value="1.2K" icon={FileText} trend={15} trendLabel="this period" />
+        <StatCard title="Total Requests" value={overview?.pending_requests || 0} icon={FileBarChart} />
+        <StatCard title="Active Users" value={userData?.total || 0} icon={Users} />
+        <StatCard title="Departments" value={overview?.departments || 0} icon={TrendingUp} />
+        <StatCard title="Documents" value={documentData?.total || 0} icon={FileText} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardTitle className="mb-4">Request Volume</CardTitle>
+          <CardTitle className="mb-4">Request Volume Trend</CardTitle>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData.requests}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12 }} />
+            <AreaChart data={trendsData || []}>
+              <defs>
+                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#60A5FA" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#60A5FA" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorApproved" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
               <Legend />
-              <Bar dataKey="submitted" fill="#1E3A5F" name="Submitted" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="approved" fill="#C9A227" name="Approved" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Area type="monotone" dataKey="requests.total" stroke="#60A5FA" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" name="Total" />
+              <Area type="monotone" dataKey="requests.approved" stroke="#F59E0B" strokeWidth={2} fillOpacity={1} fill="url(#colorApproved)" name="Approved" />
+            </AreaChart>
           </ResponsiveContainer>
         </Card>
         <Card>
           <CardTitle className="mb-4">Approval Trend</CardTitle>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData.requests}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12 }} />
+            <LineChart data={trendsData || []}>
+              <defs>
+                <linearGradient id="lineApproved" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="lineTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#60A5FA" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#60A5FA" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
               <Legend />
-              <Line type="monotone" dataKey="submitted" stroke="#1E3A5F" strokeWidth={2} dot={{ fill: '#1E3A5F' }} name="Submitted" />
-              <Line type="monotone" dataKey="approved" stroke="#C9A227" strokeWidth={2} dot={{ fill: '#C9A227' }} name="Approved" />
+              <Area type="monotone" dataKey="requests.approved" stroke="#F59E0B" strokeWidth={3} fill="url(#lineApproved)" name="Approved" dot={{ fill: '#F59E0B', strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
+              <Area type="monotone" dataKey="requests.total" stroke="#60A5FA" strokeWidth={3} fill="url(#lineTotal)" name="Total" dot={{ fill: '#60A5FA', strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
             </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <Card>
+          <CardTitle className="mb-4">Requests by Status</CardTitle>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={Object.entries(requestData?.by_status || {}).map(([status, count]) => ({ status, count }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+              <XAxis dataKey="status" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+              <Bar dataKey="count" fill="#F59E0B" name="Count" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card>
+          <CardTitle className="mb-4">Users by Role</CardTitle>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={Object.entries(userData?.by_role || {}).map(([role, count]) => ({ role, count }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+              <XAxis dataKey="role" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+              <Bar dataKey="count" fill="#60A5FA" name="Count" radius={[8, 8, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </Card>
       </div>
@@ -68,18 +166,19 @@ export default function Reports() {
         <CardTitle className="mb-4">Available Reports</CardTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { title: 'Request Summary Report', desc: 'Overview of all requests by status and department' },
-            { title: 'User Activity Report', desc: 'Login activity and user engagement metrics' },
-            { title: 'Document Usage Report', desc: 'Document access and distribution analytics' },
-            { title: 'Approval Performance', desc: 'Average approval times by approver' },
-            { title: 'Department Comparison', desc: 'Cross-department performance metrics' },
-            { title: 'Audit Compliance Report', desc: 'Security and compliance audit summary' },
+            { title: 'Request Summary Report', desc: 'Overview of all requests by status and department', type: 'requests' },
+            { title: 'User Activity Report', desc: 'Login activity and user engagement metrics', type: 'users' },
+            { title: 'Document Usage Report', desc: 'Document access and distribution analytics', type: 'documents' },
+            { title: 'Inter-Memo Report', desc: 'Inter-department memo statistics', type: 'inter-memos' },
+            { title: 'Audit Log Report', desc: 'Security and compliance audit summary', type: 'audit' },
           ].map((report) => (
             <div key={report.title} className="p-4 rounded-xl border border-[var(--border-color)] hover:border-gold-600/30 transition-colors group">
               <FileBarChart className="h-8 w-8 text-gold-600/60 group-hover:text-gold-600 transition-colors mb-3" />
               <p className="font-medium text-[var(--text-primary)]">{report.title}</p>
               <p className="text-xs text-[var(--text-muted)] mt-1">{report.desc}</p>
-              <Button variant="outline" size="sm" className="mt-3"><Download className="h-3 w-3" /> Generate</Button>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => handleGenerateReport(report.type)}>
+                <Download className="h-3 w-3" /> Generate
+              </Button>
             </div>
           ))}
         </div>

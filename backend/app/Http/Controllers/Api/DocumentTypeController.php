@@ -52,6 +52,7 @@ class DocumentTypeController extends Controller
 
     public function store(StoreDocumentTypeRequest $request): JsonResponse
     {
+        $this->authorize('create', DocumentType::class);
         $documentType = DocumentType::create($request->validated());
         $this->auditService->log(AuditAction::Created, $documentType);
 
@@ -72,6 +73,7 @@ class DocumentTypeController extends Controller
 
     public function update(UpdateDocumentTypeRequest $request, DocumentType $documentType): JsonResponse
     {
+        $this->authorize('update', $documentType);
         $old = $documentType->toArray();
         $documentType->update($request->validated());
         $this->auditService->log(AuditAction::Updated, $documentType, null, $old, $documentType->toArray());
@@ -84,9 +86,7 @@ class DocumentTypeController extends Controller
 
     public function destroy(DocumentType $documentType): JsonResponse
     {
-        if (! request()->user()->isAdminLevel() && ! request()->user()->isDepartmentAdmin()) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
+        $this->authorize('delete', $documentType);
 
         if ($documentType->documents()->exists()) {
             return response()->json([

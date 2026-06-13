@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\AuditAction;
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class RolePermissionController extends Controller
 {
+    public function __construct(
+        protected AuditService $auditService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         if (! $request->user()->hasPermission('roles.manage') && ! $request->user()->isAdminLevel()) {
@@ -39,7 +45,11 @@ class RolePermissionController extends Controller
             'permission_ids.*' => ['integer', 'exists:permissions,id'],
         ]);
 
+        $oldPermissions = $role->permissions->pluck('id')->toArray();
         $role->permissions()->sync($request->permission_ids);
+        $newPermissions = $role->permissions->pluck('id')->toArray();
+
+        $this->auditService->log(AuditAction::Updated, $role, $request->user(), ['permission_ids' => $oldPermissions], ['permission_ids' => $newPermissions]);
 
         return response()->json([
             'message' => 'Role permissions updated successfully.',
