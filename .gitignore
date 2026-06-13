@@ -26,6 +26,7 @@ backend/storage/logs/*
 # Database
 backend/database/*.sqlite
 backend/database/*.sqlite-journal
+backend/paperless
 
 # IDE
 .idea/
