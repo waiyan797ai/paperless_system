@@ -13,7 +13,7 @@ export default function Avatar({ name, src, size = 'md', className }) {
       <img
         src={src}
         alt={name}
-        className={cn('rounded-full object-cover ring-2 ring-gold-600/30', sizes[size], className)}
+        className={cn('rounded-full object-cover object-center ring-2 ring-gold-600/30', sizes[size], className)}
       />
     )
   }

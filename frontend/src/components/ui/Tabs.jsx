@@ -2,13 +2,13 @@ import { cn } from '../../lib/utils'
 
 export default function Tabs({ tabs, activeTab, onChange, className }) {
   return (
-    <div className={cn('flex gap-1 p-1 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]', className)}>
+    <div className={cn('flex gap-1 p-1 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] overflow-x-auto', className)}>
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+            'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap shrink-0',
             activeTab === tab.id
               ? 'bg-gold-600/15 text-gold-700 dark:text-gold-300 border border-gold-600/25 shadow-sm'
               : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'

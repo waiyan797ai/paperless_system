@@ -172,32 +172,32 @@ export default function Requests() {
       />
       <Card>
         <div className="flex flex-col gap-4 mb-6">
-          <div className="flex items-center justify-between gap-3">
-            <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => { setActiveTab(tab); setPage(1) }} />
+          <div className="flex items-center gap-3 min-w-0">
+            <Tabs tabs={tabs} activeTab={activeTab} onChange={(tab) => { setActiveTab(tab); setPage(1) }} className="min-w-0 flex-1" />
             {isFetching && !isLoading && (
-              <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">Updating...</span>
+              <span className="text-xs text-[var(--text-muted)] whitespace-nowrap shrink-0">Updating...</span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <SearchInput
               value={search}
               onChange={(v) => { setSearch(v); setPage(1) }}
               placeholder="Search requests..."
-              className="min-w-[160px] w-[200px] shrink-0"
+              className="min-w-[140px] w-[180px] shrink-0"
             />
             <Select
               value={formTemplateFilter}
               onChange={(e) => { setFormTemplateFilter(e.target.value); setPage(1) }}
               options={formTemplates.map((t) => ({ value: String(t.id), label: `${t.code} — ${t.title}` }))}
               placeholder="All Forms"
-              className="w-[160px] shrink-0"
+              className="min-w-[140px] w-[160px] shrink-0"
             />
             <Select
               value={departmentFilter}
               onChange={(e) => handleDepartmentChange(e.target.value)}
               options={departments.map((d) => ({ value: String(d.id), label: d.name }))}
               placeholder="All Departments"
-              className="w-[150px] shrink-0"
+              className="min-w-[130px] w-[150px] shrink-0"
             />
             <Select
               value={sectionFilter}
@@ -205,7 +205,7 @@ export default function Requests() {
               options={sections.map((s) => ({ value: String(s.id), label: s.name }))}
               placeholder={departmentFilter ? 'All Sections' : 'Department first'}
               disabled={!departmentFilter}
-              className="w-[140px] shrink-0"
+              className="min-w-[120px] w-[140px] shrink-0"
             />
             <input
               type="date"
@@ -213,7 +213,7 @@ export default function Requests() {
               onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
               title="From Date"
               aria-label="From Date"
-              className="w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
+              className="min-w-[120px] w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
             />
             <input
               type="date"
@@ -221,7 +221,7 @@ export default function Requests() {
               onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
               title="To Date"
               aria-label="To Date"
-              className="w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
+              className="min-w-[120px] w-[132px] shrink-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
             />
             {hasFilters && (
               <Button type="button" variant="secondary" size="sm" onClick={clearFilters} className="shrink-0">
