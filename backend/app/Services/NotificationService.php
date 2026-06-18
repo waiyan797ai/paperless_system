@@ -10,6 +10,13 @@ use Illuminate\Support\Collection;
 
 class NotificationService
 {
+    private $firebaseService;
+
+    public function __construct(FirebaseService $firebaseService = null)
+    {
+        $this->firebaseService = $firebaseService;
+    }
+
     public function create(
         User|int $user,
         NotificationType|string $type,
@@ -26,6 +33,22 @@ class NotificationService
         ]);
 
         event(new NotificationSent($notification));
+
+        // Send Firebase push notification if service is available
+        if ($this->firebaseService) {
+            $userModel = $user instanceof User ? $user : User::find($user);
+            if ($userModel && $userModel->fcm_token) {
+                $this->firebaseService->sendNotification(
+                    $userModel->fcm_token,
+                    $title,
+                    $message,
+                    array_merge($data ?? [], [
+                        'type' => $notification->type,
+                        'notification_id' => $notification->id,
+                    ])
+                );
+            }
+        }
 
         return $notification;
     }

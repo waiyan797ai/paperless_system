@@ -33,6 +33,7 @@ Route::prefix('v1')->group(function () {
         Route::put('auth/profile', [AuthController::class, 'updateProfile']);
         Route::post('auth/profile', [AuthController::class, 'updateProfile']);
         Route::post('auth/change-password', [AuthController::class, 'changePassword']);
+        Route::post('auth/fcm-token', [AuthController::class, 'updateFcmToken']);
 
         Route::get('dashboard', [DashboardController::class, 'index']);
 

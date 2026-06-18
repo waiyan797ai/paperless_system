@@ -5,12 +5,12 @@ import { useNotifications } from '../hooks/useNotifications'
 import { useToast } from '../components/ui/Toast'
 import api from '../lib/api'
 import { queryKeys } from '../lib/queryKeys'
+import { requestNotificationPermission, onForegroundMessage } from '../lib/firebase'
 
 const RealtimeContext = createContext(null)
 
-// SSE is disabled by default — php artisan serve is single-threaded and an open
-// SSE connection blocks all other API requests. Use polling instead.
-const ENABLE_SSE = import.meta.env.VITE_ENABLE_SSE === 'true'
+// WebSocket enabled for real-time notifications
+const ENABLE_WEBSOCKET = true
 const POLL_MS = 8000
 
 export function RealtimeProvider({ children }) {
@@ -22,6 +22,33 @@ export function RealtimeProvider({ children }) {
   const lastDocumentVersionRef = useRef(0)
   const lastNotificationIdRef = useRef(0)
   const eventSourceRef = useRef(null)
+
+  // Initialize Firebase notifications
+  useEffect(() => {
+    if (isAuthenticated) {
+      requestNotificationPermission()
+      
+      // Handle foreground messages
+      onForegroundMessage((payload) => {
+        const notification = {
+          title: payload.notification?.title,
+          message: payload.notification?.body,
+          data: payload.data
+        }
+        
+        prependNotification(notification)
+        addToast(notification.title || notification.message, 'info', 5000)
+        
+        // Show desktop notification if available
+        if (window.__OMS_DESKTOP__?.showNotification) {
+          window.__OMS_DESKTOP__.showNotification(
+            notification.title || 'New Notification',
+            notification.message
+          )
+        }
+      })
+    }
+  }, [isAuthenticated, prependNotification, addToast])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -81,29 +108,74 @@ export function RealtimeProvider({ children }) {
     return () => clearInterval(interval)
   }, [isAuthenticated, addToast, prependNotification, queryClient])
 
-  // Optional SSE — only when VITE_ENABLE_SSE=true AND using a proper web server (not artisan serve)
+  // WebSocket for real-time notifications
   useEffect(() => {
-    if (!isAuthenticated || !ENABLE_SSE) return undefined
+    if (!isAuthenticated || !ENABLE_WEBSOCKET) return undefined
 
     const token = localStorage.getItem('oms_token')
     if (!token) return undefined
 
-    const source = new EventSource(`/api/v1/realtime/stream?token=${encodeURIComponent(token)}`)
-    eventSourceRef.current = source
+    // Create WebSocket connection
+    const wsUrl = `ws://localhost:8080/app/${import.meta.env.VITE_PUSHER_APP_KEY || 'local-key'}`
+    const ws = new WebSocket(wsUrl)
 
-    source.addEventListener('requests_updated', () => {
-      queryClient.invalidateQueries({ queryKey: ['form-requests'] })
-    })
+    ws.onopen = () => {
+      console.log('WebSocket connected')
+      // Subscribe to private channel
+      ws.send(JSON.stringify({
+        event: 'pusher:subscribe',
+        data: {
+          channel: `private-users.${JSON.parse(atob(token.split('.')[1])).sub}`,
+          auth: token
+        }
+      }))
+    }
 
-    source.addEventListener('documents_updated', () => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
-    })
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      
+      if (data.event === 'notification.sent') {
+        const notification = data.data
+        prependNotification(notification)
+        addToast(notification.title || notification.message, 'info', 5000)
+        
+        // Show desktop notification if available
+        if (window.__OMS_DESKTOP__?.showNotification) {
+          window.__OMS_DESKTOP__.showNotification(
+            notification.title || 'New Notification',
+            notification.message
+          )
+        }
+        
+        if (notification.type === 'document') {
+          queryClient.invalidateQueries({ queryKey: ['documents'] })
+        }
+      }
+      
+      if (data.event === 'requests_updated') {
+        queryClient.invalidateQueries({ queryKey: ['form-requests'] })
+      }
+      
+      if (data.event === 'documents_updated') {
+        queryClient.invalidateQueries({ queryKey: ['documents'] })
+      }
+    }
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected')
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+
+    eventSourceRef.current = ws
 
     return () => {
-      source.close()
+      ws.close()
       eventSourceRef.current = null
     }
-  }, [isAuthenticated, queryClient])
+  }, [isAuthenticated, queryClient, addToast, prependNotification])
 
   return <RealtimeContext.Provider value={{}}>{children}</RealtimeContext.Provider>
 }
