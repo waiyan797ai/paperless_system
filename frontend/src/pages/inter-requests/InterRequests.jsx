@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, ArrowLeftRight } from 'lucide-react'
+import { Plus, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
@@ -12,6 +12,9 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import EmptyState from '../../components/ui/EmptyState'
 import api from '../../lib/api'
 import { formatDate, getStatusColor } from '../../lib/utils'
+import { isAdminLevel } from '../../lib/auth'
+import { useAuth } from '../../hooks/useAuth'
+import { useToast } from '../../components/ui/Toast'
 
 const statusOptions = [
   { value: 'pending', label: 'Pending' },
@@ -47,8 +50,12 @@ export default function InterRequests() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState(null)
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { addToast } = useToast()
   const pageSize = 10
+  const isAdmin = isAdminLevel(user)
 
   const hasFilters = Boolean(statusFilter || priorityFilter || scopeFilter || dateFrom || dateTo)
 
@@ -88,6 +95,22 @@ export default function InterRequests() {
     setDateFrom('')
     setDateTo('')
     setPage(1)
+  }
+
+  const handleDelete = async (e, req) => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete inter-memo "${req.subject}"?`)) return
+    setDeletingId(req.id)
+    try {
+      await api.delete(`/inter-memos/${req.id}`)
+      addToast('Inter-memo deleted', 'success')
+      setRequests((prev) => prev.filter((r) => r.id !== req.id))
+      setTotalItems((prev) => Math.max(0, prev - 1))
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete inter-memo', 'error')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -180,6 +203,7 @@ export default function InterRequests() {
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
+                  {isAdmin && <TableHead className="w-24">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -197,6 +221,29 @@ export default function InterRequests() {
                     <TableCell><span className="capitalize text-sm">{req.priority || '—'}</span></TableCell>
                     <TableCell><Badge variant={getStatusColor(req.status)} dot>{req.status}</Badge></TableCell>
                     <TableCell>{formatDate(req.created_at)}</TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/inter-memos/${req.id}/edit`) }}
+                            className="p-2 rounded-lg hover:bg-gold-500/10 text-[var(--text-muted)] hover:text-gold-600"
+                            title="Edit memo"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDelete(e, req)}
+                            disabled={deletingId === req.id}
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 disabled:opacity-50"
+                            title="Delete memo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

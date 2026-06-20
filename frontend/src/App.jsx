@@ -48,6 +48,12 @@ import Reports from './pages/reports/Reports'
 import ReportDetail from './pages/reports/ReportDetail'
 import RolePermissions from './pages/admin/RolePermissions'
 
+import MeetingsList from './pages/meetings/MeetingsList'
+import CreateMeeting from './pages/meetings/CreateMeeting'
+import MeetingDetail from './pages/meetings/MeetingDetail'
+import MeetingTemplatesList from './pages/meetings/MeetingTemplatesList'
+import MeetingTemplateForm from './pages/meetings/MeetingTemplateForm'
+
 function AppRoutes() {
   const location = useLocation()
 
@@ -89,6 +95,7 @@ function AppRoutes() {
 
           <Route path="/inter-memos" element={<InterRequests />} />
           <Route path="/inter-memos/new" element={<InterRequestForm />} />
+          <Route path="/inter-memos/:id/edit" element={<InterRequestForm />} />
           <Route path="/inter-memos/:id" element={<InterRequestDetail />} />
           <Route path="/inter-requests" element={<Navigate to="/inter-memos" replace />} />
           <Route path="/inter-requests/new" element={<Navigate to="/inter-memos/new" replace />} />
@@ -101,6 +108,13 @@ function AppRoutes() {
           <Route path="/documents/distribution" element={<Navigate to="/documents/outgoing/new" replace />} />
           <Route path="/document-types" element={<ProtectedRoute roles={['admin', 'department']}><DocumentTypes /></ProtectedRoute>} />
           <Route path="/documents/:id" element={<DocumentDetail />} />
+
+          <Route path="/meetings" element={<MeetingsList />} />
+          <Route path="/meetings/new" element={<ProtectedRoute permission="meetings.create"><CreateMeeting /></ProtectedRoute>} />
+          <Route path="/meetings/:id" element={<MeetingDetail />} />
+          <Route path="/meeting-templates" element={<ProtectedRoute permission="meetings.create"><MeetingTemplatesList /></ProtectedRoute>} />
+          <Route path="/meeting-templates/new" element={<ProtectedRoute permission="meetings.create"><MeetingTemplateForm /></ProtectedRoute>} />
+          <Route path="/meeting-templates/:id/edit" element={<ProtectedRoute permission="meetings.create"><MeetingTemplateForm /></ProtectedRoute>} />
 
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/audit-logs" element={<ProtectedRoute roles={['admin']}><AuditLogs /></ProtectedRoute>} />

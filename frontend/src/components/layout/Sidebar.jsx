@@ -5,10 +5,11 @@ import {
   LayoutDashboard, Building2, Users, FileText, ClipboardList,
   ArrowLeftRight, Inbox, Bell, Shield, BarChart3,
   ChevronLeft, ChevronRight, Layers, Send, Tag, FileSpreadsheet,
+  CalendarDays,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import Logo from '../ui/Logo'
-import { hasRole } from '../../lib/auth'
+import { hasRole, hasPermission } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 
 const navGroups = [
@@ -39,6 +40,8 @@ const navGroups = [
       { to: '/requests', icon: ClipboardList, label: 'Requests', roles: ['admin', 'department', 'section', 'employee'] },
       { to: '/form-templates', icon: FileSpreadsheet, label: 'Form Templates', roles: ['admin'] },
       { to: '/inter-memos', icon: ArrowLeftRight, label: 'Inter-Memos', roles: ['admin', 'department', 'section', 'employee'] },
+      { to: '/meetings', icon: CalendarDays, label: 'Meetings', roles: ['admin', 'department', 'section', 'employee'] },
+      { to: '/meeting-templates', icon: FileSpreadsheet, label: 'Meeting Templates', roles: ['admin', 'department', 'section', 'employee'], permission: 'meetings.create' },
     ],
   },
   {
@@ -67,7 +70,11 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   const filteredGroups = navGroups.map((group) => ({
     ...group,
-    items: group.items.filter((item) => hasRole(user, ...item.roles)),
+    items: group.items.filter((item) => {
+      const hasRoleAccess = hasRole(user, ...item.roles)
+      const hasPermissionAccess = item.permission ? hasPermission(user, item.permission) : true
+      return hasRoleAccess && hasPermissionAccess
+    }),
   })).filter((group) => group.items.length > 0)
 
   // Preserve scroll position when route changes

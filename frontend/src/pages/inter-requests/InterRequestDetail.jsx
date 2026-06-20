@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, ArrowRight, CheckCircle, Download, FileText } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowRight, CheckCircle, Download, FileText, Pencil, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -10,6 +10,7 @@ import SearchableSelect from '../../components/ui/SearchableSelect'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import api from '../../lib/api'
 import { formatDate, formatFileSize, getStatusColor } from '../../lib/utils'
+import { isAdminLevel } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../../components/ui/Toast'
 
@@ -35,9 +36,11 @@ export default function InterRequestDetail() {
   const [actionLoading, setActionLoading] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
   const [approveOpen, setApproveOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [remark, setRemark] = useState('')
   const [forwardUserId, setForwardUserId] = useState('')
   const [assignableUsers, setAssignableUsers] = useState([])
+  const isAdmin = isAdminLevel(user)
 
   const loadRequest = () => {
     setLoading(true)
@@ -124,6 +127,20 @@ export default function InterRequestDetail() {
     }
   }
 
+  const handleDelete = async () => {
+    setActionLoading(true)
+    try {
+      await api.delete(`/inter-memos/${id}`)
+      addToast('Inter-memo deleted', 'success')
+      setDeleteOpen(false)
+      navigate('/inter-memos')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete inter-memo', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="py-12 flex justify-center">
@@ -152,16 +169,28 @@ export default function InterRequestDetail() {
         title={request.subject}
         subtitle={request.reference_no}
         actions={
-          canProcess ? (
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={openForwardModal}>
-                <ArrowRight className="h-4 w-4" /> Forward
-              </Button>
-              <Button variant="gold" onClick={() => { setRemark(''); setApproveOpen(true) }}>
-                <CheckCircle className="h-4 w-4" /> Approve
-              </Button>
-            </div>
-          ) : null
+          <div className="flex flex-wrap gap-2">
+            {isAdmin && (
+              <>
+                <Button variant="secondary" onClick={() => navigate(`/inter-memos/${id}/edit`)}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </>
+            )}
+            {canProcess && (
+              <>
+                <Button variant="secondary" onClick={openForwardModal}>
+                  <ArrowRight className="h-4 w-4" /> Forward
+                </Button>
+                <Button variant="gold" onClick={() => { setRemark(''); setApproveOpen(true) }}>
+                  <CheckCircle className="h-4 w-4" /> Approve
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -313,6 +342,22 @@ export default function InterRequestDetail() {
             placeholder="Approval remark..."
           />
         </div>
+      </Modal>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete Inter-Memo"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDelete} loading={actionLoading}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--text-secondary)]">
+          Delete inter-memo "{request?.subject}"? This cannot be undone.
+        </p>
       </Modal>
     </PageTransition>
   )

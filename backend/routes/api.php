@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\FormRequestController;
 use App\Http\Controllers\Api\FormTemplateController;
 use App\Http\Controllers\Api\InterRequestController;
+use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\MeetingTemplateController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PolicyController;
 use App\Http\Controllers\Api\PolicyTypeController;
@@ -85,6 +87,30 @@ Route::prefix('v1')->group(function () {
         Route::post('documents/{document}/acknowledge', [DocumentController::class, 'acknowledge']);
         Route::get('documents/{document}/download', [DocumentController::class, 'download']);
         Route::get('documents/{document}/tracking', [DocumentController::class, 'tracking']);
+
+        Route::apiResource('meetings', MeetingController::class);
+        Route::post('meetings/{meeting}/start', [MeetingController::class, 'startMeeting']);
+        Route::post('meetings/{meeting}/end', [MeetingController::class, 'endMeeting']);
+        Route::post('meetings/{meeting}/agenda-items', [MeetingController::class, 'addAgendaItems']);
+        Route::put('meetings/{meeting}/agenda-items/{agendaItem}', [MeetingController::class, 'updateAgendaItem']);
+        Route::delete('meetings/{meeting}/agenda-items/{agendaItem}', [MeetingController::class, 'removeAgendaItem']);
+        Route::post('meetings/{meeting}/groups', [MeetingController::class, 'addGroups']);
+        Route::delete('meetings/{meeting}/groups/{group}', [MeetingController::class, 'removeGroup']);
+        Route::post('meetings/{meeting}/participants', [MeetingController::class, 'addParticipants']);
+        Route::delete('meetings/{meeting}/participants/{participant}', [MeetingController::class, 'removeParticipant']);
+        Route::put('meetings/{meeting}/speaking-queue', [MeetingController::class, 'updateSpeakingQueue']);
+        Route::put('meetings/{meeting}/current-sub-topic', [MeetingController::class, 'updateCurrentSubTopic']);
+        Route::put('meetings/{meeting}/speaker-info', [MeetingController::class, 'updateSpeakerInfo']);
+        Route::put('meetings/{meeting}/sub-topic-notes', [MeetingController::class, 'updateSubTopicNotes']);
+        Route::post('meetings/{meeting}/sub-topic-files', [MeetingController::class, 'uploadSubTopicFile']);
+
+        Route::apiResource('meeting-templates', MeetingTemplateController::class);
+        Route::post('meetings/{meeting}/rsvp', [MeetingController::class, 'rsvp']);
+        Route::post('meetings/{meeting}/checkin', [MeetingController::class, 'checkin']);
+        Route::get('my-meetings', [MeetingController::class, 'myMeetings']);
+        Route::get('meeting-stats', [MeetingController::class, 'dashboardStats']);
+        Route::get('meetings/{meeting}/minutes', [MeetingController::class, 'getMinutes']);
+        Route::post('meetings/{meeting}/minutes', [MeetingController::class, 'saveMinute']);
 
         Route::get('notifications', [NotificationController::class, 'index']);
         Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead']);

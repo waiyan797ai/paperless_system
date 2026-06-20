@@ -41,6 +41,7 @@ export function normalizeRole(role) {
   const name = typeof role === 'string' ? role : role.name
   const map = {
     super_admin: 'admin',
+    system_admin: 'admin',
     admin: 'admin',
     manager: 'department',
     department_admin: 'department',
