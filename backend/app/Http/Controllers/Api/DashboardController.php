@@ -41,8 +41,6 @@ class DashboardController extends Controller
             RequestStatus::Submitted->value,
             RequestStatus::DeptApproved->value,
             RequestStatus::AtSection->value,
-            RequestStatus::Assigned->value,
-            RequestStatus::Pending->value,
         ];
 
         return [
@@ -61,7 +59,7 @@ class DashboardController extends Controller
                 $this->stat('unread_notifications', 'Unread Alerts', $this->unreadCount($user), 'bell'),
             ],
             'recent_requests' => $this->formatRequests(
-                FormRequest::with(['user', 'formTemplate', 'targetDepartment', 'assignedTo'])->latest()->limit(6)->get()
+                FormRequest::with(['user', 'formTemplate', 'targetDepartment'])->latest()->limit(6)->get()
             ),
             'recent_inter_memos' => $this->formatInterMemos(
                 InterRequest::with(['requester', 'assignee'])->latest()->limit(5)->get()
@@ -88,22 +86,20 @@ class DashboardController extends Controller
                 $this->stat('employees', 'Employees', User::where('department_id', $departmentId)->where('status', 'active')->count(), 'users'),
                 $this->stat('sections', 'Sections', Section::where('department_id', $departmentId)->where('status', 'active')->count(), 'layers'),
                 $this->stat('dept_inbox', 'Dept Inbox', FormRequest::where('review_department_id', $departmentId)->where('status', RequestStatus::Submitted)->count(), 'inbox'),
-                $this->stat('to_assign', 'To Assign', FormRequest::where('target_department_id', $departmentId)->where('status', RequestStatus::DeptApproved)->count(), 'clipboard'),
+                $this->stat('dept_review', 'Dept Review', FormRequest::where('target_department_id', $departmentId)->where('status', RequestStatus::DeptApproved)->count(), 'clipboard'),
                 $this->stat('open_inter_memos', 'Open Inter-Memos', InterRequest::where(function ($q) use ($departmentId, $user) {
                     $q->where('from_department_id', $departmentId)
                         ->orWhere('to_department_id', $departmentId)
                         ->orWhere('assigned_to', $user->id);
                 })->whereIn('status', [InterRequestStatus::Pending, InterRequestStatus::Processing])->count(), 'arrow'),
                 $this->stat('incoming_documents', 'Incoming Mail', $this->incomingDocumentsCount($departmentId), 'file'),
-                $this->stat('assigned_to_me', 'Assigned to Me', FormRequest::where('assigned_to_id', $user->id)->where('status', RequestStatus::Assigned)->count(), 'check'),
                 $this->stat('unread_notifications', 'Unread Alerts', $this->unreadCount($user), 'bell'),
             ],
             'recent_requests' => $this->formatRequests(
-                FormRequest::with(['user', 'formTemplate', 'targetDepartment', 'assignedTo'])
-                    ->where(function (Builder $q) use ($departmentId, $user) {
+                FormRequest::with(['user', 'formTemplate', 'targetDepartment'])
+                    ->where(function (Builder $q) use ($departmentId) {
                         $q->where('target_department_id', $departmentId)
-                            ->orWhere('review_department_id', $departmentId)
-                            ->orWhere('assigned_to_id', $user->id);
+                            ->orWhere('review_department_id', $departmentId);
                     })
                     ->latest()
                     ->limit(6)
@@ -145,7 +141,6 @@ class DashboardController extends Controller
             'section_name' => $user->section?->name,
             'stats' => [
                 $this->stat('section_inbox', 'Section Inbox', FormRequest::where('target_section_id', $sectionId)->where('status', RequestStatus::AtSection)->count(), 'inbox'),
-                $this->stat('assigned_to_me', 'Assigned to Me', FormRequest::where('assigned_to_id', $user->id)->where('status', RequestStatus::Assigned)->count(), 'check'),
                 $this->stat('dept_inbox', 'Dept Inbox', FormRequest::where('review_department_id', $departmentId)->where('status', RequestStatus::Submitted)->count(), 'inbox'),
                 $this->stat('my_requests', 'My Requests', FormRequest::where('user_id', $user->id)->count(), 'clipboard'),
                 $this->stat('open_inter_memos', 'Open Inter-Memos', InterRequest::where('assigned_to', $user->id)->whereIn('status', [InterRequestStatus::Pending, InterRequestStatus::Processing])->count(), 'arrow'),
@@ -153,10 +148,9 @@ class DashboardController extends Controller
                 $this->stat('unread_notifications', 'Unread Alerts', $this->unreadCount($user), 'bell'),
             ],
             'recent_requests' => $this->formatRequests(
-                FormRequest::with(['user', 'formTemplate', 'targetDepartment', 'assignedTo'])
+                FormRequest::with(['user', 'formTemplate', 'targetDepartment'])
                     ->where(function (Builder $q) use ($sectionId, $user) {
                         $q->where('target_section_id', $sectionId)
-                            ->orWhere('assigned_to_id', $user->id)
                             ->orWhere('user_id', $user->id);
                     })
                     ->latest()
@@ -197,7 +191,6 @@ class DashboardController extends Controller
                     RequestStatus::Submitted->value,
                     RequestStatus::DeptApproved->value,
                     RequestStatus::AtSection->value,
-                    RequestStatus::Assigned->value,
                 ])->count(), 'clock'),
                 $this->stat('approved', 'Approved', FormRequest::where('user_id', $user->id)->where('status', RequestStatus::Approved)->count(), 'check'),
                 $this->stat('inter_memos_sent', 'Inter-Memos Sent', InterRequest::where('requester_id', $user->id)->count(), 'arrow'),
@@ -206,7 +199,7 @@ class DashboardController extends Controller
                 $this->stat('unread_notifications', 'Unread Alerts', $this->unreadCount($user), 'bell'),
             ],
             'recent_requests' => $this->formatRequests(
-                FormRequest::with(['user', 'formTemplate', 'targetDepartment', 'assignedTo'])
+                FormRequest::with(['user', 'formTemplate', 'targetDepartment'])
                     ->where('user_id', $user->id)
                     ->latest()
                     ->limit(6)
@@ -318,7 +311,6 @@ class DashboardController extends Controller
             'status' => $req->status?->value ?? $req->status,
             'requester' => $req->user?->name,
             'department' => $req->targetDepartment?->name,
-            'assigned_to' => $req->assignedTo?->name,
             'created_at' => $req->submitted_at ?? $req->created_at,
         ])->values()->all();
     }

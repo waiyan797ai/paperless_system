@@ -20,8 +20,6 @@ class PermissionSeeder extends Seeder
             ['slug' => 'form_requests.dept_inbox', 'name' => 'Department Inbox', 'group' => 'requests'],
             ['slug' => 'form_requests.section_inbox', 'name' => 'Section Inbox', 'group' => 'requests'],
             ['slug' => 'form_requests.forward_section', 'name' => 'Forward to Section', 'group' => 'requests'],
-            ['slug' => 'form_requests.assign', 'name' => 'Assign Requests', 'group' => 'requests'],
-            ['slug' => 'form_requests.process', 'name' => 'Process Assigned Requests', 'group' => 'requests'],
             ['slug' => 'form_requests.approve', 'name' => 'Approve/Reject Requests', 'group' => 'requests'],
             ['slug' => 'users.manage', 'name' => 'Manage Users', 'group' => 'admin'],
             ['slug' => 'departments.manage', 'name' => 'Manage Departments', 'group' => 'admin'],
@@ -40,8 +38,7 @@ class PermissionSeeder extends Seeder
         $managerPermissions = [
             'dashboard.view', 'policies.view', 'policies.manage', 'form_requests.create',
             'form_requests.dept_inbox', 'form_requests.forward_section', 'form_requests.section_inbox',
-            'form_requests.assign', 'form_requests.process', 'form_requests.approve',
-            'sections.manage', 'reports.view',
+            'form_requests.approve', 'sections.manage', 'reports.view',
         ];
 
         $roleMap = [
@@ -50,7 +47,7 @@ class PermissionSeeder extends Seeder
             UserRole::Manager->value => $managerPermissions,
             UserRole::User->value => [
                 'dashboard.view', 'policies.view', 'form_requests.create',
-                'form_requests.process', 'form_requests.approve',
+                'form_requests.approve',
             ],
         ];
 

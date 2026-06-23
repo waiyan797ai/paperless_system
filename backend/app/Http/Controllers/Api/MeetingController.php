@@ -387,6 +387,9 @@ class MeetingController extends Controller
             'agenda_items.*.files' => 'nullable|array',
             'agenda_items.*.files.*.name' => 'required|string',
             'agenda_items.*.files.*.url' => 'required|string',
+            'agenda_items.*.main_files' => 'nullable|array',
+            'agenda_items.*.main_files.*.name' => 'required|string',
+            'agenda_items.*.main_files.*.url' => 'required|string',
         ]);
 
         $maxOrder = $meeting->agendaItems()->max('order_index') ?? -1;
@@ -398,6 +401,7 @@ class MeetingController extends Controller
             if (!empty($item['presenter_id'])) {
                 $presenter = $meeting->participants()->where('user_id', $item['presenter_id'])->with('user')->first();
                 if ($presenter) {
+                    $mainFiles = array_merge($item['files'] ?? [], $item['main_files'] ?? []);
                     $speakingQueue[] = [
                         'user_id' => $presenter->user_id,
                         'name' => $presenter->user->name,
@@ -405,7 +409,7 @@ class MeetingController extends Controller
                         'status' => 'queued',
                         'topic' => $item['topic'] ?? null,
                         'sub_topics' => $item['sub_topics'] ?? [],
-                        'files' => $item['files'] ?? [],
+                        'files' => $mainFiles,
                     ];
                 }
             }
@@ -615,6 +619,9 @@ class MeetingController extends Controller
             'sub_topics.*.actions.*.start_date' => 'nullable|date',
             'sub_topics.*.actions.*.due_date' => 'nullable|date',
             'sub_topics.*.actions.*.task' => 'nullable|string',
+            'files' => 'nullable|array',
+            'files.*.name' => 'required_with:files|string',
+            'files.*.url' => 'required_with:files|string',
         ]);
 
         $agendaItem = MeetingAgendaItem::where('meeting_id', $id)->findOrFail($validated['agenda_item_id']);
@@ -651,6 +658,9 @@ class MeetingController extends Controller
                     'actions' => array_values(array_filter($st['actions'] ?? [], fn($a) => !empty($a['user_id']))),
                 ];
             }, $validated['sub_topics']);
+        }
+        if (isset($validated['files'])) {
+            $queue[$speakerIndex]['files'] = array_values(array_filter($validated['files'], fn($f) => !empty($f['name']) && !empty($f['url'])));
         }
 
         $agendaItem->update(['speaking_queue' => $queue]);

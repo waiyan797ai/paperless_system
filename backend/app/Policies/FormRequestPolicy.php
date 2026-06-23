@@ -13,7 +13,7 @@ class FormRequestPolicy
         return $user->hasPermission('form_requests.create')
             || $user->hasPermission('form_requests.dept_inbox')
             || $user->hasPermission('form_requests.section_inbox')
-            || $user->hasPermission('form_requests.process');
+            || $user->hasPermission('form_requests.approve');
     }
 
     public function view(User $user, FormRequest $formRequest): bool
@@ -22,47 +22,35 @@ class FormRequestPolicy
             return true;
         }
 
+        // Owner can always view
         if ($formRequest->user_id === $user->id) {
             return true;
         }
 
-        if ($formRequest->assigned_to_id === $user->id) {
-            return true;
-        }
-
+        // CC users can view
         if ($formRequest->ccUsers()->where('users.id', $user->id)->exists()) {
             return true;
         }
 
+        // Department head can view requests in their dept inbox
         if ($user->hasPermission('form_requests.dept_inbox')) {
             if ($formRequest->status === RequestStatus::Submitted
                 && $formRequest->review_department_id === $user->department_id) {
                 return true;
             }
 
-            if ($formRequest->status === RequestStatus::DeptApproved
-                && $formRequest->target_department_id === $user->department_id) {
-                return true;
-            }
-
-            // After assignment, keep department admin view access in the same target department scope.
-            if ($formRequest->status === RequestStatus::Assigned
+            // Target dept head can view dept_approved and at_section requests (view only for at_section)
+            if (in_array($formRequest->status, [RequestStatus::DeptApproved, RequestStatus::AtSection], true)
                 && $formRequest->target_department_id === $user->department_id) {
                 return true;
             }
         }
 
+        // Section head can view at_section requests in their section
         if ($user->hasPermission('form_requests.section_inbox')
-            && $formRequest->target_section_id === $user->section_id) {
-            // Section inbox stages
-            if ($formRequest->status === RequestStatus::AtSection) {
-                return true;
-            }
-
-            // Assigned requests created from section stage
-            if ($formRequest->status === RequestStatus::Assigned) {
-                return true;
-            }
+            && $formRequest->target_section_id === $user->section_id
+            && $formRequest->status === RequestStatus::AtSection) {
+            return true;
         }
 
         return false;
@@ -80,12 +68,10 @@ class FormRequestPolicy
 
     public function delete(User $user, FormRequest $formRequest): bool
     {
-        // Admins and Super Admins can delete at any time
         if ($user->isAdminLevel()) {
             return true;
         }
 
-        // Creator can delete only if not approved yet
         return $formRequest->user_id === $user->id
             && $formRequest->status !== RequestStatus::Approved;
     }
@@ -95,6 +81,7 @@ class FormRequestPolicy
         return $formRequest->user_id === $user->id && $formRequest->status->isSubmittable();
     }
 
+    // Own dept head reviews submitted requests
     public function review(User $user, FormRequest $formRequest): bool
     {
         if ($formRequest->user_id === $user->id) {
@@ -105,9 +92,50 @@ class FormRequestPolicy
             return false;
         }
 
-        return $formRequest->status === RequestStatus::Submitted
-            && $formRequest->review_department_id === $user->department_id
-            && ($user->isAdminLevel() || $user->isDepartmentAdmin());
+        if ($formRequest->status !== RequestStatus::Submitted) {
+            return false;
+        }
+
+        return $user->isAdminLevel()
+            || ($user->isDepartmentAdmin() && $formRequest->review_department_id === $user->department_id);
+    }
+
+    // Target dept head approves dept_approved requests
+    public function targetDeptApprove(User $user, FormRequest $formRequest): bool
+    {
+        if ($formRequest->user_id === $user->id) {
+            return false;
+        }
+
+        if (! $user->hasPermission('form_requests.approve')) {
+            return false;
+        }
+
+        if ($formRequest->status !== RequestStatus::DeptApproved) {
+            return false;
+        }
+
+        return $user->isAdminLevel()
+            || ($user->isDepartmentAdmin() && $formRequest->target_department_id === $user->department_id);
+    }
+
+    // Section head approves at_section requests
+    public function sectionApprove(User $user, FormRequest $formRequest): bool
+    {
+        if ($formRequest->user_id === $user->id) {
+            return false;
+        }
+
+        if (! $user->hasPermission('form_requests.approve')) {
+            return false;
+        }
+
+        if ($formRequest->status !== RequestStatus::AtSection) {
+            return false;
+        }
+
+        return $user->isAdminLevel()
+            || ($user->isSectionAdmin() && $formRequest->target_section_id === $user->section_id);
     }
 
     public function manageCc(User $user, FormRequest $formRequest): bool
@@ -116,32 +144,19 @@ class FormRequestPolicy
             return false;
         }
 
-        if ($formRequest->status === RequestStatus::Submitted
-            && $formRequest->review_department_id === $user->department_id) {
-            return true;
-        }
+        $activeStatuses = [
+            RequestStatus::Submitted,
+            RequestStatus::DeptApproved,
+            RequestStatus::AtSection,
+        ];
 
-        return $formRequest->status === RequestStatus::DeptApproved
-            && $formRequest->target_department_id === $user->department_id;
-    }
-
-    public function assign(User $user, FormRequest $formRequest): bool
-    {
-        if (! $user->hasPermission('form_requests.assign')) {
+        if (! in_array($formRequest->status, $activeStatuses, true)) {
             return false;
         }
 
-        if ($formRequest->status === RequestStatus::DeptApproved) {
-            return $user->isAdminLevel()
-                || ($user->isDepartmentAdmin() && $formRequest->target_department_id === $user->department_id);
-        }
-
-        if ($formRequest->status === RequestStatus::AtSection) {
-            return $user->isAdminLevel()
-                || ($user->isSectionAdmin() && $formRequest->target_section_id === $user->section_id);
-        }
-
-        return false;
+        return $user->isAdminLevel()
+            || $formRequest->review_department_id === $user->department_id
+            || $formRequest->target_department_id === $user->department_id;
     }
 
     public function forwardSection(User $user, FormRequest $formRequest): bool
@@ -153,34 +168,5 @@ class FormRequestPolicy
         return $formRequest->status === RequestStatus::DeptApproved
             && ($user->isAdminLevel()
                 || ($user->isDepartmentAdmin() && $formRequest->target_department_id === $user->department_id));
-    }
-
-    public function returnToSubmitter(User $user, FormRequest $formRequest): bool
-    {
-        if ($formRequest->user_id === $user->id) {
-            return false;
-        }
-
-        if (! $user->hasPermission('form_requests.approve')) {
-            return false;
-        }
-
-        return $formRequest->status === RequestStatus::DeptApproved
-            && ($user->isAdminLevel()
-                || ($user->isDepartmentAdmin() && $formRequest->target_department_id === $user->department_id));
-    }
-
-    public function process(User $user, FormRequest $formRequest): bool
-    {
-        if ($formRequest->user_id === $user->id) {
-            return false;
-        }
-
-        if (! $user->hasPermission('form_requests.process') && ! $user->hasPermission('form_requests.approve')) {
-            return false;
-        }
-
-        return $formRequest->assigned_to_id === $user->id
-            && $formRequest->status === RequestStatus::Assigned;
     }
 }

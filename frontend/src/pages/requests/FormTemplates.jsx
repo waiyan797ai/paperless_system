@@ -40,6 +40,12 @@ const emptyItemsField = {
 
 const columnTypeOptions = ['text', 'number', 'date', 'select']
 
+const attachmentTypeOptions = [
+  { value: 'none', label: 'No Attachments' },
+  { value: 'single', label: 'Single File' },
+  { value: 'multiple', label: 'Multiple Files' },
+]
+
 const emptyForm = {
   code: '',
   title: '',
@@ -47,6 +53,7 @@ const emptyForm = {
   target_department_id: '',
   target_section_id: '',
   status: 'active',
+  attachment_type: 'none',
   fields: [{ ...emptyField }],
 }
 
@@ -119,6 +126,7 @@ export default function FormTemplates() {
       target_department_id: template.target_department_id ? String(template.target_department_id) : '',
       target_section_id: template.target_section_id ? String(template.target_section_id) : '',
       status: template.status || 'active',
+      attachment_type: template.attachment_type || 'none',
       fields: template.fields?.length
         ? template.fields.map((f) => ({
             ...f,
@@ -199,6 +207,7 @@ export default function FormTemplates() {
         ...form,
         target_department_id: form.target_department_id || null,
         target_section_id: form.target_department_id && form.target_section_id ? form.target_section_id : null,
+        attachment_type: form.attachment_type || 'none',
         fields: form.fields.map((f) => {
           const base = {
             name: f.name || f.label.toLowerCase().replace(/\s+/g, '_'),
@@ -290,6 +299,7 @@ export default function FormTemplates() {
                   <TableHead>Fields</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Section</TableHead>
+                  <TableHead>Attachments</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-28">Actions</TableHead>
                 </TableRow>
@@ -302,6 +312,7 @@ export default function FormTemplates() {
                     <TableCell>{t.fields?.length || 0}</TableCell>
                     <TableCell>{t.target_department?.name || 'Any'}</TableCell>
                     <TableCell>{t.target_section?.name || '—'}</TableCell>
+                    <TableCell><span className="text-sm capitalize">{t.attachment_type === 'none' ? '—' : t.attachment_type}</span></TableCell>
                     <TableCell><Badge variant={t.status === 'active' ? 'success' : 'default'} dot>{t.status}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -341,6 +352,7 @@ export default function FormTemplates() {
             disabled={!form.target_department_id}
           />
           <Select label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} options={['active', 'inactive']} />
+          <Select label="Attachments" value={form.attachment_type} onChange={(e) => setForm({ ...form, attachment_type: e.target.value })} options={attachmentTypeOptions} />
 
           <div className="pt-2">
             <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">Form Fields</p>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Inbox, Send, UserCheck, CheckCircle, XCircle, Layers, ClipboardCheck, Users, FileEdit, Trash2 } from 'lucide-react'
+import { Plus, Inbox, Send, CheckCircle, XCircle, Layers, ClipboardCheck, Users, FileEdit, Trash2 } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
@@ -22,9 +22,8 @@ const allFolders = {
   drafts: { label: 'Drafts', icon: FileEdit, permission: 'form_requests.create' },
   outbox: { label: 'Outbox', icon: Send, permission: 'form_requests.create' },
   inbox: { label: 'Inbox', icon: Inbox, permission: 'form_requests.dept_inbox' },
-  to_assign: { label: 'To Assign', icon: ClipboardCheck, permission: 'form_requests.assign' },
+  dept_review: { label: 'Dept Review', icon: ClipboardCheck, permission: 'form_requests.dept_inbox' },
   section_inbox: { label: 'Section Inbox', icon: Layers, permission: 'form_requests.section_inbox' },
-  assign: { label: 'Assigned to Me', icon: UserCheck, permission: 'form_requests.process' },
   cc: { label: 'CC', icon: Users, permission: 'form_requests.create' },
   approved: { label: 'Approved', icon: CheckCircle, permission: 'form_requests.create' },
   rejected: { label: 'Rejected', icon: XCircle, permission: 'form_requests.create' },
@@ -256,7 +255,6 @@ export default function Requests() {
                   <TableHead>Requester</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Section</TableHead>
-                  <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="w-12" />
@@ -272,7 +270,6 @@ export default function Requests() {
                       <TableCell>{req.user?.name || '—'}</TableCell>
                       <TableCell>{req.target_department?.name || '—'}</TableCell>
                       <TableCell>{req.target_section?.name || '—'}</TableCell>
-                      <TableCell>{req.assigned_to?.name || '—'}</TableCell>
                       <TableCell><Badge variant={getStatusColor(req.status)} dot>{req.status}</Badge></TableCell>
                       <TableCell>{formatDate(req.submitted_at || req.created_at)}</TableCell>
                       <TableCell>

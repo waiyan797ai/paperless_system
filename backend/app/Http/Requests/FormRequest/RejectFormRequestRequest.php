@@ -11,7 +11,8 @@ class RejectFormRequestRequest extends FormRequest
         $formRequest = $this->route('form_request');
 
         return $this->user()->can('review', $formRequest)
-            || $this->user()->can('process', $formRequest);
+            || $this->user()->can('targetDeptApprove', $formRequest)
+            || $this->user()->can('sectionApprove', $formRequest);
     }
 
     public function rules(): array

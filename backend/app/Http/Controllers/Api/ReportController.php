@@ -177,7 +177,7 @@ class ReportController extends Controller
             'data' => [
                 'users' => User::count(),
                 'departments' => Department::count(),
-                'pending_requests' => FormRequest::where('status', RequestStatus::Pending)->count(),
+                'pending_requests' => FormRequest::where('status', RequestStatus::Submitted)->count(),
                 'pending_inter_requests' => InterRequest::where('status', InterRequestStatus::Pending)->count(),
                 'documents' => Document::count(),
                 'audit_logs_today' => AuditLog::whereDate('created_at', today())->count(),
@@ -206,7 +206,7 @@ class ReportController extends Controller
                     'rejected' => FormRequest::whereBetween('created_at', [$start, $end])
                         ->where('status', RequestStatus::Rejected)->count(),
                     'pending' => FormRequest::whereBetween('created_at', [$start, $end])
-                        ->where('status', RequestStatus::Pending)->count(),
+                        ->where('status', RequestStatus::Submitted)->count(),
                 ],
                 'documents' => Document::whereBetween('created_at', [$start, $end])->count(),
                 'users' => User::whereBetween('created_at', [$start, $end])->count(),

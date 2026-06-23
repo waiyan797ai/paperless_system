@@ -36,8 +36,11 @@ export default function MeetingDetail() {
   const [editingSpeaker, setEditingSpeaker] = useState(null)
   const [speakerTopic, setSpeakerTopic] = useState('')
   const [speakerSubTopics, setSpeakerSubTopics] = useState([{ title: '', description: '', notes: '', files: [] }])
+  const [speakerMainFiles, setSpeakerMainFiles] = useState([])
+  const [uploadingSpeakerMainFile, setUploadingSpeakerMainFile] = useState(false)
   const [savingSpeakerInfo, setSavingSpeakerInfo] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(null)
+  const [uploadingMainFile, setUploadingMainFile] = useState(null)
   const [viewingFile, setViewingFile] = useState(null)
   const [filePreviewData, setFilePreviewData] = useState(null)
   const [filePreviewLoading, setFilePreviewLoading] = useState(false)
@@ -295,7 +298,7 @@ export default function MeetingDetail() {
   }
 
   const addNewAgendaItem = () => {
-    setNewAgendaItems(prev => [...prev, { title: '', duration_minutes: 15, presenter_id: '', topic: '', sub_topics: [{ title: '', description: '', files: [] }], files: [] }])
+    setNewAgendaItems(prev => [...prev, { title: '', duration_minutes: 15, presenter_id: '', topic: '', sub_topics: [{ title: '', description: '', files: [] }], files: [], main_files: [] }])
   }
 
   const removeNewAgendaItem = (index) => {
@@ -354,7 +357,7 @@ export default function MeetingDetail() {
       await api.post(`/meetings/${id}/agenda-items`, { agenda_items: validItems })
       addToast('Agenda items added', 'success')
       setShowAddAgenda(false)
-      setNewAgendaItems([{ title: '', duration_minutes: 15, presenter_id: '', topic: '', sub_topics: [{ title: '', description: '', files: [] }], files: [] }])
+      setNewAgendaItems([{ title: '', duration_minutes: 15, presenter_id: '', topic: '', sub_topics: [{ title: '', description: '', files: [] }], files: [], main_files: [] }])
       fetchMeeting()
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to add agenda items', 'error')
@@ -394,17 +397,23 @@ export default function MeetingDetail() {
   const getFileType = (url) => {
     const ext = ((url?.split('.').pop() || '').split('?')[0] || '').toLowerCase()
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image'
-    if (['pdf'].includes(ext)) return 'pdf'
+    if (ext === 'pdf') return 'pdf'
     if (['mp4', 'mov', 'avi', 'mp3'].includes(ext)) return 'media'
-    if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(ext)) return 'office'
+    if (['xls', 'xlsx'].includes(ext)) return 'excel'
+    if (['doc', 'docx', 'ppt', 'pptx'].includes(ext)) return 'office'
     return 'other'
+  }
+
+  const getGoogleDocsViewerUrl = (fileUrl) => {
+    const absolute = fileUrl.startsWith('http') ? fileUrl : `${window.location.origin}${fileUrl}`
+    return `https://docs.google.com/gview?url=${encodeURIComponent(absolute)}&embedded=true`
   }
 
   const openFileViewer = async (file) => {
     setViewingFile(file)
     setFilePreviewData(null)
     const ext = (file.url?.split('.').pop()?.split('?')[0] || '').toLowerCase()
-    if (['xls', 'xlsx'].includes(ext)) {
+    if (['xls', 'xlsx'].includes(ext) || getFileType(file.url) === 'excel') {
       setFilePreviewLoading(true)
       try {
         const previewUrl = file.url.startsWith('http') ? new URL(file.url).pathname : file.url
@@ -437,7 +446,8 @@ export default function MeetingDetail() {
     if (!speaker) return
     setEditingSpeaker({ agendaItemId, speakerIdx, userId: speaker.user_id, name: speaker.name })
     setSpeakerTopic(speaker.topic || '')
-    const subs = Array.isArray(speaker.sub_topics) && speaker.sub_topics.length
+    const hasSubs = Array.isArray(speaker.sub_topics) && speaker.sub_topics.length
+    const subs = hasSubs
       ? speaker.sub_topics.map(st => ({
           title: st.title || '',
           description: st.description || '',
@@ -449,10 +459,12 @@ export default function MeetingDetail() {
           title: speaker.sub_topic || '',
           description: speaker.description || '',
           notes: '',
-          files: Array.isArray(speaker.files) ? speaker.files : [],
+          files: [],
           actions: []
         }]
     setSpeakerSubTopics(subs)
+    // Speaker-level main files (only meaningful when sub_topics exist)
+    setSpeakerMainFiles(Array.isArray(speaker.files) ? speaker.files : [])
     if (users.length === 0) {
       try {
         const { data } = await api.get('/users')
@@ -462,6 +474,52 @@ export default function MeetingDetail() {
         addToast('Failed to load users', 'error')
       }
     }
+  }
+
+  const handleUploadSpeakerMainFile = async (file) => {
+    if (!file) return
+    setUploadingSpeakerMainFile(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await api.post(`/meetings/${id}/sub-topic-files`, formData)
+      setSpeakerMainFiles(prev => [...prev, { name: data.data.name, url: data.data.url }])
+      addToast('File uploaded', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to upload file', 'error')
+    } finally {
+      setUploadingSpeakerMainFile(false)
+    }
+  }
+
+  const removeSpeakerMainFile = (index) => {
+    setSpeakerMainFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleUploadAgendaMainFile = async (itemIndex, file) => {
+    if (!file) return
+    setUploadingMainFile(itemIndex)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await api.post(`/meetings/${id}/sub-topic-files`, formData)
+      setNewAgendaItems(prev => prev.map((item, i) => {
+        if (i !== itemIndex) return item
+        return { ...item, main_files: [...(item.main_files || []), { name: data.data.name, url: data.data.url }] }
+      }))
+      addToast('File uploaded', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to upload file', 'error')
+    } finally {
+      setUploadingMainFile(null)
+    }
+  }
+
+  const removeAgendaMainFile = (itemIndex, fileIndex) => {
+    setNewAgendaItems(prev => prev.map((item, i) => {
+      if (i !== itemIndex) return item
+      return { ...item, main_files: (item.main_files || []).filter((_, fi) => fi !== fileIndex) }
+    }))
   }
 
   const handleUploadSpeakerFile = async (subIndex, fileIndex, file) => {
@@ -544,11 +602,13 @@ export default function MeetingDetail() {
         speaker_index: editingSpeaker.speakerIdx,
         topic: speakerTopic || null,
         sub_topics: validSubTopics,
+        files: speakerMainFiles.filter(f => f.name && f.url),
       })
       addToast('Speaker info saved', 'success')
       setEditingSpeaker(null)
       setSpeakerTopic('')
       setSpeakerSubTopics([{ title: '', description: '', notes: '', files: [], actions: [] }])
+      setSpeakerMainFiles([])
       fetchMeeting()
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to save speaker info', 'error')
@@ -1808,38 +1868,35 @@ export default function MeetingDetail() {
                     </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Files</label>
-                    <div className="space-y-2">
-                      {item.files.map((f, fi) => (
-                        <div key={fi} className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="File name"
-                            value={f.name}
-                            onChange={(e) => updateNewAgendaFile(index, fi, 'name', e.target.value)}
-                            className="flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-primary)] focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500/30"
-                          />
-                          <input
-                            type="text"
-                            placeholder="URL"
-                            value={f.url}
-                            onChange={(e) => updateNewAgendaFile(index, fi, 'url', e.target.value)}
-                            className="flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-primary)] focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500/30"
-                          />
-                          <button onClick={() => removeNewAgendaFile(index, fi)} className="rounded p-1 text-red-500 hover:bg-red-500/10">
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
+                  <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-[var(--text-primary)]">Main Files</label>
+                      <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-gold-600 px-3 py-1.5 text-xs text-white hover:bg-gold-500">
+                        <Plus className="h-3 w-3" />
+                        {uploadingMainFile === index ? 'Uploading...' : 'Upload File'}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.zip,.txt"
+                          disabled={uploadingMainFile === index}
+                          onChange={(e) => handleUploadAgendaMainFile(index, e.target.files[0])}
+                        />
+                      </label>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => addNewAgendaFile(index)}
-                      className="mt-2 inline-flex items-center gap-1 rounded-lg bg-gold-600/10 px-3 py-1 text-xs text-gold-600 hover:bg-gold-600/10"
-                    >
-                      <Plus className="h-3 w-3" /> Add File
-                    </button>
+                    <p className="text-xs text-[var(--text-muted)]">Upload PDF, Word, PowerPoint, Excel, or image files to attach to this agenda item</p>
+                    {(item.main_files || []).length > 0 && (
+                      <ul className="space-y-2">
+                        {(item.main_files || []).map((f, fi) => (
+                          <li key={fi} className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2">
+                            <FileText className="h-4 w-4 text-gold-600 shrink-0" />
+                            <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{f.name}</span>
+                            <button onClick={() => removeAgendaMainFile(index, fi)} className="text-red-500 hover:text-red-400">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2141,9 +2198,46 @@ export default function MeetingDetail() {
               </div>
             </div>
 
+            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-[var(--text-primary)]">Main Files</label>
+                <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-gold-600 px-3 py-1.5 text-xs text-white hover:bg-gold-500">
+                  <Plus className="h-3 w-3" />
+                  {uploadingSpeakerMainFile ? 'Uploading...' : 'Upload File'}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.zip,.txt"
+                    disabled={uploadingSpeakerMainFile}
+                    onChange={(e) => handleUploadSpeakerMainFile(e.target.files[0])}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">Attach PDF, Word, PowerPoint, Excel, or image files</p>
+              {speakerMainFiles.length > 0 && (
+                <ul className="space-y-2">
+                  {speakerMainFiles.map((f, fi) => (
+                    <li key={fi} className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] px-3 py-2">
+                      <FileText className="h-4 w-4 text-gold-600 shrink-0" />
+                      <button
+                        type="button"
+                        onClick={() => openFileViewer(f)}
+                        className="flex-1 text-left text-sm text-[var(--text-primary)] truncate hover:text-gold-600"
+                      >
+                        {f.name}
+                      </button>
+                      <button onClick={() => removeSpeakerMainFile(fi)} className="text-red-500 hover:text-red-400 shrink-0">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div className="mt-4 flex justify-end gap-3">
               <button
-                onClick={() => setEditingSpeaker(null)}
+                onClick={() => { setEditingSpeaker(null); setSpeakerMainFiles([]) }}
                 className="rounded-lg border border-[var(--border-color)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
               >
                 Cancel
@@ -2162,7 +2256,7 @@ export default function MeetingDetail() {
 
       {viewingFile && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 ${filePreviewFullscreen ? 'p-2' : 'p-4'}`}>
-          <div className={`w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] p-4 shadow-xl flex flex-col ${filePreviewFullscreen ? 'max-w-[95vw] h-[95vh]' : 'max-w-4xl max-h-[90vh]'}`}>
+          <div className={`w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] p-4 shadow-xl flex flex-col transition-all duration-200 ${filePreviewFullscreen ? 'max-w-[98vw] h-[98vh]' : 'max-w-5xl h-[90vh]'}`}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate pr-4">{viewingFile.name}</h3>
               <div className="flex items-center gap-2">
@@ -2181,14 +2275,18 @@ export default function MeetingDetail() {
                     >
                       Zoom +
                     </button>
-                    <button
-                      onClick={() => setFilePreviewFullscreen(v => !v)}
-                      className="rounded-lg border border-[var(--border-color)] px-2 py-1 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
-                    >
-                      {filePreviewFullscreen ? 'Exit Full' : 'Full Screen'}
-                    </button>
                   </>
                 )}
+                <button
+                  onClick={() => setFilePreviewFullscreen(v => !v)}
+                  title={filePreviewFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  className="rounded-lg border border-[var(--border-color)] p-1.5 text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
+                >
+                  {filePreviewFullscreen
+                    ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0h5m-5 0v5M15 9l5-5m0 0h-5m5 0v5M9 15l-5 5m0 0h5m-5 0v-5M15 15l5 5m0 0h-5m5 0v-5" /></svg>
+                    : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5M20 8V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5M20 16v4m0 0h-4m4 0l-5-5" /></svg>
+                  }
+                </button>
                 <a
                   href={viewingFile.url}
                   download={viewingFile.name}
@@ -2204,20 +2302,20 @@ export default function MeetingDetail() {
                 </button>
               </div>
             </div>
-            <div className={`flex items-center justify-center overflow-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] p-2 ${filePreviewFullscreen ? 'flex-1 h-0' : 'max-h-[70vh]'}`}>
+            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] flex items-start justify-center p-2">
               {getFileType(viewingFile.url) === 'image' && (
-                <img src={viewingFile.url} alt={viewingFile.name} className="max-h-full max-w-full rounded" />
+                <img src={viewingFile.url} alt={viewingFile.name} className="max-h-full max-w-full rounded object-contain" style={{ transform: `scale(${filePreviewZoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }} />
               )}
               {getFileType(viewingFile.url) === 'pdf' && (
-                <iframe src={viewingFile.url} title={viewingFile.name} className="h-[65vh] w-full rounded" />
+                <iframe src={viewingFile.url} title={viewingFile.name} className="w-full h-full min-h-[80vh] rounded" />
               )}
               {getFileType(viewingFile.url) === 'media' && (
                 <video src={viewingFile.url} controls className="max-h-full max-w-full rounded">
                   Your browser does not support the video tag.
                 </video>
               )}
-              {getFileType(viewingFile.url) === 'office' && (
-                <div className="w-full space-y-3">
+              {getFileType(viewingFile.url) === 'excel' && (
+                <div className="w-full space-y-3 h-full flex flex-col">
                   {filePreviewLoading && (
                     <div className="flex h-[30vh] items-center justify-center">
                       <p className="text-sm text-[var(--text-muted)]">Loading preview...</p>
@@ -2261,15 +2359,16 @@ export default function MeetingDetail() {
                       </div>
                     </div>
                   )}
-                  {!filePreviewLoading && filePreviewData?.type !== 'excel' && (
-                    <div className="space-y-3 text-center">
-                      <p className="text-sm text-[var(--text-muted)]">This Office file can be downloaded, but live preview is limited to Excel files in this environment.</p>
-                      <a href={viewingFile.url} download={viewingFile.name} className="inline-block rounded-lg bg-gold-600 px-4 py-2 text-sm text-white hover:bg-gold-500">
-                        Download File
-                      </a>
-                    </div>
-                  )}
                 </div>
+              )}
+              {getFileType(viewingFile.url) === 'office' && (
+                <iframe
+                  src={getGoogleDocsViewerUrl(viewingFile.url)}
+                  title={viewingFile.name}
+                  className="w-full h-full rounded"
+                  style={{ minHeight: '80vh' }}
+                  allowFullScreen
+                />
               )}
               {getFileType(viewingFile.url) === 'other' && (
                 <div className="p-8 text-center">

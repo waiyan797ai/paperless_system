@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, X, Paperclip, Upload } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
@@ -149,6 +149,8 @@ export default function RequestForm() {
   const [formData, setFormData] = useState({})
   const [requestStatus, setRequestStatus] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
 
   const selectedTemplate = templates.find((t) => String(t.id) === String(selectedTemplateId))
 
@@ -172,6 +174,7 @@ export default function RequestForm() {
         setTargetSectionId(req.target_section_id ? String(req.target_section_id) : '')
         setFormData(req.data || {})
         setRequestStatus(req.status)
+        setAttachments(req.attachments || [])
       })
       .catch(() => {
         addToast('Failed to load request', 'error')
@@ -278,6 +281,60 @@ export default function RequestForm() {
     }
   }
 
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    let requestId = id
+    if (!requestId) {
+      if (!selectedTemplateId || !targetDepartmentId) {
+        addToast('Please select form and target department first', 'error')
+        return
+      }
+      try {
+        const { data } = await api.post('/form-requests', {
+          form_template_id: selectedTemplateId,
+          target_department_id: targetDepartmentId,
+          target_section_id: targetDepartmentId && targetSectionId ? targetSectionId : null,
+          data: formData,
+        })
+        requestId = data.data.id
+        navigate(`/requests/${requestId}/edit`, { replace: true })
+      } catch (err) {
+        addToast(err.response?.data?.message || 'Failed to save draft before uploading', 'error')
+        return
+      }
+    }
+
+    setUploading(true)
+    try {
+      for (const file of files) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const { data } = await api.post(`/form-requests/${requestId}/attachments`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        setAttachments((prev) => [data.data, ...prev])
+      }
+      addToast('File uploaded', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to upload file', 'error')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    try {
+      await api.delete(`/form-requests/${id}/attachments/${attachmentId}`)
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId))
+      addToast('Attachment removed', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete attachment', 'error')
+    }
+  }
+
   if (fetching) {
     return <div className="py-12 flex justify-center"><LoadingSpinner label="Loading request..." /></div>
   }
@@ -357,6 +414,38 @@ export default function RequestForm() {
               onChange={(val) => updateField(field.name, val)}
             />
           ))}
+
+          {selectedTemplate && selectedTemplate.attachment_type !== 'none' && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                <Paperclip className="h-4 w-4 inline mr-1" />
+                Attachments {selectedTemplate.attachment_type === 'single' ? '(1 file)' : '(multiple files)'}
+              </label>
+              {attachments.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {attachments.map((att) => (
+                    <div key={att.id} className="flex items-center justify-between p-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                        <span className="text-sm truncate">{att.file_name}</span>
+                        <span className="text-xs text-[var(--text-muted)] shrink-0">{(att.file_size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteAttachment(att.id)} className="text-[var(--text-muted)] hover:text-red-500 shrink-0 ml-2">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(selectedTemplate.attachment_type === 'multiple' || attachments.length === 0) && (
+                <label className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-[var(--border-color)] hover:border-gold-500 cursor-pointer transition-colors">
+                  <Upload className="h-4 w-4 text-[var(--text-muted)]" />
+                  <span className="text-sm text-[var(--text-muted)]">{uploading ? 'Uploading...' : 'Click to upload file'}</span>
+                  <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} multiple={selectedTemplate.attachment_type === 'multiple'} />
+                </label>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="gold" loading={loading}>Submit Request</Button>

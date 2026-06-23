@@ -51,9 +51,7 @@ Route::prefix('v1')->group(function () {
         Route::get('form-requests/counts', [FormRequestController::class, 'counts']);
         Route::apiResource('form-requests', FormRequestController::class);
         Route::post('form-requests/{form_request}/submit', [FormRequestController::class, 'submit']);
-        Route::get('form-requests/{form_request}/assignable-users', [FormRequestController::class, 'assignableUsers']);
         Route::post('form-requests/{form_request}/forward-section', [FormRequestController::class, 'forwardToSection']);
-        Route::post('form-requests/{form_request}/assign', [FormRequestController::class, 'assign']);
         Route::put('form-requests/{form_request}/cc', [FormRequestController::class, 'syncCcUsers']);
         Route::get('form-requests/{form_request}/cc-candidates', [FormRequestController::class, 'ccCandidates']);
         Route::get('roles-permissions', [RolePermissionController::class, 'index']);
@@ -62,6 +60,9 @@ Route::prefix('v1')->group(function () {
         Route::post('form-requests/{form_request}/reject', [FormRequestController::class, 'reject']);
         Route::post('form-requests/{form_request}/return', [FormRequestController::class, 'returnForRevision']);
         Route::post('form-requests/{form_request}/comments', [FormRequestController::class, 'addComment']);
+        Route::post('form-requests/{form_request}/attachments', [FormRequestController::class, 'uploadAttachment']);
+        Route::get('form-requests/{form_request}/attachments/{attachment}/download', [FormRequestController::class, 'downloadAttachment']);
+        Route::delete('form-requests/{form_request}/attachments/{attachment}', [FormRequestController::class, 'deleteAttachment']);
 
         Route::get('inter-memos/assignable-users', [InterRequestController::class, 'assignableUsers']);
         Route::apiResource('inter-memos', InterRequestController::class)->parameters([

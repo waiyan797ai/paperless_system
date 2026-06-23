@@ -7,7 +7,6 @@ use App\Enums\RequestStatus;
 use App\Enums\RequestType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FormRequest\ApprovalActionRequest;
-use App\Http\Requests\FormRequest\AssignFormRequestRequest;
 use App\Http\Requests\FormRequest\ForwardSectionRequest;
 use App\Http\Requests\FormRequest\RejectFormRequestRequest;
 use App\Http\Requests\FormRequest\ReturnFormRequestRequest;
@@ -16,14 +15,17 @@ use App\Http\Requests\FormRequest\StoreFormRequestRequest;
 use App\Http\Requests\FormRequest\SyncCcUsersRequest;
 use App\Http\Requests\FormRequest\UpdateFormRequestRequest;
 use App\Models\FormRequest;
+use App\Models\FormRequestAttachment;
 use App\Models\FormTemplate;
 use App\Models\RequestComment;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use App\Services\AuditService;
 use App\Services\RequestWorkflowService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+
 class FormRequestController extends Controller
 {
     public function __construct(
@@ -41,7 +43,6 @@ class FormRequestController extends Controller
         } elseif (! $user->isAdminLevel()) {
             $query->where(function (Builder $q) use ($user) {
                 $q->where('user_id', $user->id)
-                    ->orWhere('assigned_to_id', $user->id)
                     ->orWhere('target_department_id', $user->department_id);
             });
         }
@@ -78,8 +79,7 @@ class FormRequestController extends Controller
                     ->orWhereHas('formTemplate', fn ($tq) => $tq
                         ->where('code', 'like', "%{$search}%")
                         ->orWhere('title', 'like', "%{$search}%"))
-                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('assignedTo', fn ($aq) => $aq->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('user', fn ($uq) => $uq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -90,7 +90,7 @@ class FormRequestController extends Controller
     {
         $user = $request->user();
 
-        $folders = ['drafts', 'outbox', 'inbox', 'to_assign', 'section_inbox', 'assign', 'cc', 'approved', 'rejected'];
+        $folders = ['drafts', 'outbox', 'inbox', 'dept_review', 'section_inbox', 'cc', 'approved', 'rejected'];
         $counts = [];
 
         foreach ($folders as $folder) {
@@ -111,21 +111,19 @@ class FormRequestController extends Controller
                 ->where('status', '!=', RequestStatus::Draft->value),
             'inbox' => $query->where('review_department_id', $user->department_id)
                 ->where('status', RequestStatus::Submitted->value),
-            'to_assign' => $query->where('target_department_id', $user->department_id)
+            'dept_review' => $query->where('target_department_id', $user->department_id)
                 ->where('status', RequestStatus::DeptApproved->value),
             'section_inbox' => $query->where('target_section_id', $user->section_id)
                 ->where('status', RequestStatus::AtSection->value),
-            'assign' => $query->where('assigned_to_id', $user->id)
-                ->where('status', RequestStatus::Assigned->value),
             'cc' => $query->whereHas('ccUsers', fn (Builder $q) => $q->where('users.id', $user->id)),
             'approved' => $query->where('status', RequestStatus::Approved->value)
                 ->when(! $user->isAdminLevel(), fn (Builder $q) => $q->where(fn (Builder $inner) => $inner
                     ->where('user_id', $user->id)
-                    ->orWhere('assigned_to_id', $user->id))),
+                    ->orWhere('target_department_id', $user->department_id))),
             'rejected' => $query->where('status', RequestStatus::Rejected->value)
                 ->when(! $user->isAdminLevel(), fn (Builder $q) => $q->where(fn (Builder $inner) => $inner
                     ->where('user_id', $user->id)
-                    ->orWhere('assigned_to_id', $user->id))),
+                    ->orWhere('target_department_id', $user->department_id))),
             default => $query,
         };
     }
@@ -196,23 +194,6 @@ class FormRequestController extends Controller
         ]);
     }
 
-    public function assignableUsers(FormRequest $formRequest): JsonResponse
-    {
-        $this->authorize('assign', $formRequest);
-
-        $query = User::query()->where('status', 'active')->orderBy('name');
-
-        if ($formRequest->status === RequestStatus::AtSection && $formRequest->target_section_id) {
-            $query->where('section_id', $formRequest->target_section_id);
-        } elseif (in_array($formRequest->status, [RequestStatus::DeptApproved, RequestStatus::Submitted], true)) {
-            $query->where('department_id', $formRequest->target_department_id);
-        } else {
-            $query->where('department_id', $formRequest->target_department_id);
-        }
-
-        return response()->json(['data' => $query->get(['id', 'name', 'email', 'employee_id', 'position', 'department_id', 'section_id'])]);
-    }
-
     public function forwardToSection(ForwardSectionRequest $request, FormRequest $formRequest): JsonResponse
     {
         $formRequest = $this->workflowService->forwardToSection(
@@ -223,21 +204,6 @@ class FormRequestController extends Controller
 
         return response()->json([
             'message' => 'Request forwarded to section successfully.',
-            'data' => $formRequest,
-        ]);
-    }
-
-    public function assign(AssignFormRequestRequest $request, FormRequest $formRequest): JsonResponse
-    {
-        $formRequest = $this->workflowService->assign(
-            $formRequest,
-            $request->user(),
-            (int) $request->assigned_to_id,
-            $request->input('remark')
-        );
-
-        return response()->json([
-            'message' => 'Request assigned successfully.',
             'data' => $formRequest,
         ]);
     }
@@ -292,7 +258,6 @@ class FormRequestController extends Controller
 
         $users = User::query()
             ->where('status', 'active')
-            ->where('department_id', $formRequest->target_department_id)
             ->where('id', '!=', $formRequest->user_id)
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'employee_id', 'position', 'department_id']);
@@ -312,5 +277,71 @@ class FormRequestController extends Controller
             'message' => 'Comment added.',
             'data' => $comment->load('user'),
         ], 201);
+    }
+
+    public function uploadAttachment(Request $request, FormRequest $formRequest): JsonResponse
+    {
+        $this->authorize('update', $formRequest);
+
+        $template = $formRequest->formTemplate;
+        $attachmentType = $template?->attachment_type ?? 'none';
+
+        if ($attachmentType === 'none') {
+            return response()->json(['message' => 'This form does not allow attachments.'], 422);
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:30720'],
+        ]);
+
+        if ($attachmentType === 'single' && $formRequest->attachments()->count() >= 1) {
+            return response()->json(['message' => 'Only one attachment is allowed for this form.'], 422);
+        }
+
+        $file = $request->file('file');
+        $path = $file->store('form-request-attachments', 'documents');
+
+        $attachment = FormRequestAttachment::create([
+            'form_request_id' => $formRequest->id,
+            'uploaded_by' => $request->user()->id,
+            'file_name' => $file->getClientOriginalName(),
+            'file_path' => $path,
+            'mime_type' => $file->getMimeType(),
+            'file_size' => $file->getSize(),
+        ]);
+
+        return response()->json([
+            'message' => 'Attachment uploaded.',
+            'data' => $attachment->load('uploader'),
+        ], 201);
+    }
+
+    public function downloadAttachment(FormRequest $formRequest, FormRequestAttachment $attachment)
+    {
+        $this->authorize('view', $formRequest);
+
+        if ($attachment->form_request_id !== $formRequest->id) {
+            abort(404);
+        }
+
+        if (! Storage::disk('documents')->exists($attachment->file_path)) {
+            return response()->json(['message' => 'File not found.'], 404);
+        }
+
+        return Storage::disk('documents')->download($attachment->file_path, $attachment->file_name);
+    }
+
+    public function deleteAttachment(Request $request, FormRequest $formRequest, FormRequestAttachment $attachment): JsonResponse
+    {
+        $this->authorize('update', $formRequest);
+
+        if ($attachment->form_request_id !== $formRequest->id) {
+            abort(404);
+        }
+
+        Storage::disk('documents')->delete($attachment->file_path);
+        $attachment->delete();
+
+        return response()->json(['message' => 'Attachment deleted.']);
     }
 }

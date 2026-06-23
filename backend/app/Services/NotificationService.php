@@ -12,9 +12,13 @@ class NotificationService
 {
     private $firebaseService;
 
-    public function __construct(FirebaseService $firebaseService = null)
+    public function __construct()
     {
-        $this->firebaseService = $firebaseService;
+        try {
+            $this->firebaseService = app(FirebaseService::class);
+        } catch (\Exception $e) {
+            $this->firebaseService = null;
+        }
     }
 
     public function create(
@@ -32,7 +36,11 @@ class NotificationService
             'data' => $data,
         ]);
 
-        event(new NotificationSent($notification));
+        try {
+            event(new NotificationSent($notification));
+        } catch (\Exception $e) {
+            \Log::warning('Broadcast failed for notification: '.$e->getMessage());
+        }
 
         // Send Firebase push notification if service is available
         if ($this->firebaseService) {

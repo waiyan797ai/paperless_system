@@ -8,8 +8,6 @@ enum RequestStatus: string
     case Submitted = 'submitted';
     case DeptApproved = 'dept_approved';
     case AtSection = 'at_section';
-    case Assigned = 'assigned';
-    case Pending = 'pending';
     case Approved = 'approved';
     case Rejected = 'rejected';
     case Returned = 'returned';

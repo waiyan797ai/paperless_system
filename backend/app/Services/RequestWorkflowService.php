@@ -31,6 +31,9 @@ class RequestWorkflowService
         return 'REQ-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
     }
 
+    // ─── Submit ──────────────────────────────────────────────────────
+    // Draft/Returned → Submitted (goes to own department head)
+
     public function submit(FormRequest $formRequest): FormRequest
     {
         if (! $formRequest->status->isSubmittable()) {
@@ -40,24 +43,7 @@ class RequestWorkflowService
         }
 
         return DB::transaction(function () use ($formRequest) {
-            $wasReturned = $formRequest->status === RequestStatus::Returned;
-            $fromStatus = $wasReturned ? RequestStatus::Returned->value : RequestStatus::Draft->value;
-
-            if ($wasReturned && $formRequest->assigned_to_id) {
-                $toStatus = RequestStatus::Assigned;
-                $formRequest->update([
-                    'status' => $toStatus,
-                    'submitted_at' => now(),
-                ]);
-                $this->logAction($formRequest, $formRequest->user, 'submitted', $fromStatus, $toStatus->value);
-                $this->auditService->log(AuditAction::Submitted, $formRequest);
-                $this->notifyUser($formRequest->assignedTo, 'Request Resubmitted', "Request \"{$formRequest->title}\" has been resubmitted.");
-
-                $updated = $formRequest->fresh($this->defaultRelations());
-                $this->broadcastUpdate($updated);
-
-                return $updated;
-            }
+            $fromStatus = $formRequest->status->value;
 
             $reviewDepartmentId = $this->resolveInitialReviewDepartment($formRequest);
 
@@ -68,9 +54,6 @@ class RequestWorkflowService
                 'dept_reviewed_by_id' => null,
                 'dept_reviewed_at' => null,
                 'endorsed_by_source_at' => null,
-                'assigned_to_id' => null,
-                'assigned_by_id' => null,
-                'assigned_at' => null,
             ]);
 
             $this->logAction($formRequest, $formRequest->user, 'submitted', $fromStatus, RequestStatus::Submitted->value);
@@ -110,6 +93,10 @@ class RequestWorkflowService
             && ! $formRequest->endorsed_by_source_at;
     }
 
+    // ─── Own Dept Head Approve ───────────────────────────────────────
+    // Submitted → DeptApproved (then goes to target dept head)
+    // For cross-dept: source dept head endorses first, then target dept head reviews.
+
     public function deptReviewApprove(FormRequest $formRequest, User $actor, string $remark): FormRequest
     {
         if ($formRequest->user_id === $actor->id) {
@@ -136,9 +123,6 @@ class RequestWorkflowService
                     'dept_reviewed_at' => now(),
                     'endorsed_by_source_at' => now(),
                     'review_department_id' => $formRequest->target_department_id,
-                    'assigned_to_id' => null,
-                    'assigned_by_id' => null,
-                    'assigned_at' => null,
                 ]);
 
                 $this->logAction($formRequest, $actor, 'source_endorsed', $from, RequestStatus::Submitted->value, null, null, $remark);
@@ -146,35 +130,19 @@ class RequestWorkflowService
                 $formRequest->refresh();
                 $this->notifyReviewDepartment($formRequest);
             } else {
-                // Same-dept or cross-dept step 2: final dept approval → assign or auto-forward to template section.
-                $formRequest->loadMissing('formTemplate');
-                $section = $this->resolveTargetSection($formRequest);
-
+                // Same-dept or cross-dept step 2: target dept head approves → DeptApproved.
                 $formRequest->update([
-                    'status' => $section ? RequestStatus::AtSection : RequestStatus::DeptApproved,
+                    'status' => RequestStatus::DeptApproved,
                     'dept_reviewed_by_id' => $actor->id,
                     'dept_reviewed_at' => now(),
                     'review_department_id' => $formRequest->target_department_id,
-                    'target_section_id' => $section?->id,
-                    'assigned_to_id' => null,
-                    'assigned_by_id' => null,
-                    'assigned_at' => null,
                 ]);
 
-                if ($section) {
-                    $this->logAction($formRequest, $actor, 'forwarded_section', $from, RequestStatus::AtSection->value, null, $section->id, $remark);
-                    $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department', 'auto_section' => $section->id]);
+                $this->logAction($formRequest, $actor, 'dept_approved', $from, RequestStatus::DeptApproved->value, null, null, $remark);
+                $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'own_department']);
 
-                    if ($section->head) {
-                        $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to your section.");
-                    }
-                } else {
-                    $this->logAction($formRequest, $actor, 'dept_approved', $from, RequestStatus::DeptApproved->value, null, null, $remark);
-                    $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department']);
-
-                    $message = "Request \"{$formRequest->title}\" was approved and is ready for assignment.";
-                    $this->notifyTargetDepartmentForAssignment($formRequest, $message);
-                }
+                $this->notifyUser($formRequest->user, 'Request Department Approved', "Your request \"{$formRequest->title}\" was approved by department head.");
+                $this->notifyCcUsers($formRequest, 'Request Department Approved', "Request \"{$formRequest->title}\" was approved at department level.");
             }
 
             $updated = $formRequest->fresh($this->defaultRelations());
@@ -184,44 +152,58 @@ class RequestWorkflowService
         });
     }
 
-    public function deptReviewReject(FormRequest $formRequest, User $actor, string $remark): FormRequest
-    {
-        return $this->deptReviewDecision($formRequest, $actor, 'rejected', RequestStatus::Rejected, $remark, AuditAction::Rejected);
-    }
+    // ─── Target Dept Head Approve ────────────────────────────────────
+    // DeptApproved → AtSection (if section selected, section head will approve)
+    // DeptApproved → Approved (no section, target dept head directly approves)
 
-    public function deptReviewReturn(FormRequest $formRequest, User $actor, string $remark): FormRequest
+    public function targetDeptApprove(FormRequest $formRequest, User $actor, string $remark): FormRequest
     {
-        return $this->deptReviewDecision($formRequest, $actor, 'returned', RequestStatus::Returned, $remark, AuditAction::Returned);
-    }
-
-    protected function deptReviewDecision(
-        FormRequest $formRequest,
-        User $actor,
-        string $action,
-        RequestStatus $toStatus,
-        string $remark,
-        AuditAction $auditAction,
-    ): FormRequest {
-        if ($formRequest->status !== RequestStatus::Submitted) {
+        if ($formRequest->user_id === $actor->id) {
             throw ValidationException::withMessages([
-                'status' => ['Only submitted requests can be reviewed at department level.'],
+                'user' => ['You cannot approve your own request.'],
             ]);
         }
 
-        return DB::transaction(function () use ($formRequest, $actor, $action, $toStatus, $remark, $auditAction) {
-            $from = $formRequest->status->value;
-
-            $formRequest->update([
-                'status' => $toStatus,
-                'dept_reviewed_by_id' => $actor->id,
-                'dept_reviewed_at' => now(),
+        if ($formRequest->status !== RequestStatus::DeptApproved) {
+            throw ValidationException::withMessages([
+                'status' => ['Only department-approved requests can be processed by the target department.'],
             ]);
+        }
 
-            $this->logAction($formRequest, $actor, $action, $from, $toStatus->value, null, null, $remark);
-            $this->auditService->log($auditAction, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'department']);
+        return DB::transaction(function () use ($formRequest, $actor, $remark) {
+            $from = $formRequest->status->value;
+            $formRequest->loadMissing('formTemplate');
+            $section = $this->resolveTargetSection($formRequest);
 
-            $title = $action === 'rejected' ? 'Request Rejected' : 'Request Returned';
-            $this->notifyUser($formRequest->user, $title, "Your request \"{$formRequest->title}\" was {$action}.");
+            if ($section) {
+                // Forward to section → section head will approve
+                $formRequest->update([
+                    'status' => RequestStatus::AtSection,
+                    'target_section_id' => $section->id,
+                ]);
+
+                $this->logAction($formRequest, $actor, 'forwarded_section', $from, RequestStatus::AtSection->value, null, $section->id, $remark);
+                $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department', 'section_id' => $section->id]);
+
+                if ($section->head) {
+                    $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" needs your approval.");
+                }
+                $this->notifyCcUsers($formRequest, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to section for approval.");
+            } else {
+                // No section → target dept head directly approves
+                $formRequest->update([
+                    'status' => RequestStatus::Approved,
+                    'final_approved_by_id' => $actor->id,
+                    'final_approved_at' => now(),
+                    'completed_at' => now(),
+                ]);
+
+                $this->logAction($formRequest, $actor, 'approved', $from, RequestStatus::Approved->value, null, null, $remark);
+                $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'target_department_final']);
+
+                $this->notifyUser($formRequest->user, 'Request Approved', "Your request \"{$formRequest->title}\" has been approved.");
+                $this->notifyCcUsers($formRequest, 'Request Approved', "Request \"{$formRequest->title}\" has been approved.");
+            }
 
             $updated = $formRequest->fresh($this->defaultRelations());
             $this->broadcastUpdate($updated);
@@ -230,20 +212,48 @@ class RequestWorkflowService
         });
     }
 
-    protected function resolveTargetSection(FormRequest $formRequest): ?Section
-    {
-        $sectionId = $formRequest->target_section_id ?? $formRequest->formTemplate?->target_section_id;
+    // ─── Section Head Approve ────────────────────────────────────────
+    // AtSection → Approved (section head gives final approval)
 
-        if (! $sectionId) {
-            return null;
+    public function sectionApprove(FormRequest $formRequest, User $actor, string $remark): FormRequest
+    {
+        if ($formRequest->user_id === $actor->id) {
+            throw ValidationException::withMessages([
+                'user' => ['You cannot approve your own request.'],
+            ]);
         }
 
-        return Section::query()
-            ->where('id', $sectionId)
-            ->where('department_id', $formRequest->target_department_id)
-            ->with('head')
-            ->first();
+        if ($formRequest->status !== RequestStatus::AtSection) {
+            throw ValidationException::withMessages([
+                'status' => ['Only requests at section level can be approved by section head.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($formRequest, $actor, $remark) {
+            $from = $formRequest->status->value;
+
+            $formRequest->update([
+                'status' => RequestStatus::Approved,
+                'final_approved_by_id' => $actor->id,
+                'final_approved_at' => now(),
+                'completed_at' => now(),
+            ]);
+
+            $this->logAction($formRequest, $actor, 'approved', $from, RequestStatus::Approved->value, null, null, $remark);
+            $this->auditService->log(AuditAction::Approved, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'section_final']);
+
+            $this->notifyUser($formRequest->user, 'Request Approved', "Your request \"{$formRequest->title}\" has been approved by section head.");
+            $this->notifyCcUsers($formRequest, 'Request Approved', "Request \"{$formRequest->title}\" has been approved.");
+
+            $updated = $formRequest->fresh($this->defaultRelations());
+            $this->broadcastUpdate($updated);
+
+            return $updated;
+        });
     }
+
+    // ─── Forward to Section ──────────────────────────────────────────
+    // DeptApproved → AtSection (target dept head manually forwards to a section)
 
     public function forwardToSection(FormRequest $formRequest, User $actor, int $sectionId): FormRequest
     {
@@ -270,16 +280,13 @@ class RequestWorkflowService
             $formRequest->update([
                 'target_section_id' => $section->id,
                 'status' => RequestStatus::AtSection,
-                'assigned_to_id' => null,
-                'assigned_by_id' => null,
-                'assigned_at' => null,
             ]);
 
             $this->logAction($formRequest, $actor, 'forwarded_section', $from, RequestStatus::AtSection->value, null, $section->id);
             $this->auditService->log(AuditAction::Updated, $formRequest, $actor, null, ['action' => 'forwarded_section', 'section_id' => $section->id]);
 
             if ($section->head) {
-                $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" was forwarded to your section.");
+                $this->notifyUser($section->head, 'Request Forwarded to Section', "Request \"{$formRequest->title}\" needs your approval.");
             }
 
             $updated = $formRequest->fresh($this->defaultRelations());
@@ -289,42 +296,51 @@ class RequestWorkflowService
         });
     }
 
-    public function assign(FormRequest $formRequest, User $assigner, int $assignedToId, ?string $remark = null): FormRequest
+    // ─── Reject ──────────────────────────────────────────────────────
+
+    public function deptReviewReject(FormRequest $formRequest, User $actor, string $remark): FormRequest
     {
-        if (! in_array($formRequest->status, [RequestStatus::DeptApproved, RequestStatus::AtSection], true)) {
+        return $this->reviewDecision($formRequest, $actor, 'rejected', RequestStatus::Rejected, $remark, AuditAction::Rejected);
+    }
+
+    public function deptReviewReturn(FormRequest $formRequest, User $actor, string $remark): FormRequest
+    {
+        return $this->reviewDecision($formRequest, $actor, 'returned', RequestStatus::Returned, $remark, AuditAction::Returned);
+    }
+
+    protected function reviewDecision(
+        FormRequest $formRequest,
+        User $actor,
+        string $action,
+        RequestStatus $toStatus,
+        string $remark,
+        AuditAction $auditAction,
+    ): FormRequest {
+        $allowedStatuses = [
+            RequestStatus::Submitted,
+            RequestStatus::DeptApproved,
+            RequestStatus::AtSection,
+        ];
+
+        if (! in_array($formRequest->status, $allowedStatuses, true)) {
             throw ValidationException::withMessages([
-                'status' => ['Request must be department-approved before assignment.'],
+                'status' => ['This request cannot be '.$action.' in its current status.'],
             ]);
         }
 
-        if ($assignedToId === $formRequest->user_id) {
-            throw ValidationException::withMessages([
-                'assigned_to_id' => ['Cannot assign a request to the person who submitted it.'],
-            ]);
-        }
-
-        $assignee = $this->resolveAssignee($formRequest, $assignedToId);
-
-        return DB::transaction(function () use ($formRequest, $assigner, $assignee, $remark) {
+        return DB::transaction(function () use ($formRequest, $actor, $action, $toStatus, $remark, $auditAction) {
             $from = $formRequest->status->value;
 
             $formRequest->update([
-                'assigned_to_id' => $assignee->id,
-                'assigned_by_id' => $assigner->id,
-                'assigned_at' => now(),
-                'status' => RequestStatus::Assigned,
+                'status' => $toStatus,
             ]);
 
-            $this->logAction($formRequest, $assigner, 'assigned', $from, RequestStatus::Assigned->value, $assignee->id, null, $remark);
-            $this->auditService->log(AuditAction::Updated, $formRequest, $assigner, null, ['action' => 'assigned', 'assigned_to_id' => $assignee->id, 'remark' => $remark]);
+            $this->logAction($formRequest, $actor, $action, $from, $toStatus->value, null, null, $remark);
+            $this->auditService->log($auditAction, $formRequest, $actor, null, ['remark' => $remark, 'stage' => $from]);
 
-            $message = "Request \"{$formRequest->title}\" has been assigned to you.";
-            if ($remark) {
-                $message .= " Remark: {$remark}";
-            }
-
-            $this->notifyUser($assignee, 'Request Assigned', $message);
-            $this->notifyCcUsers($formRequest, 'Request Assigned', $message);
+            $title = $action === 'rejected' ? 'Request Rejected' : 'Request Returned';
+            $this->notifyUser($formRequest->user, $title, "Your request \"{$formRequest->title}\" was {$action}.");
+            $this->notifyCcUsers($formRequest, $title, "Request \"{$formRequest->title}\" was {$action}.");
 
             $updated = $formRequest->fresh($this->defaultRelations());
             $this->broadcastUpdate($updated);
@@ -332,6 +348,23 @@ class RequestWorkflowService
             return $updated;
         });
     }
+
+    protected function resolveTargetSection(FormRequest $formRequest): ?Section
+    {
+        $sectionId = $formRequest->target_section_id ?? $formRequest->formTemplate?->target_section_id;
+
+        if (! $sectionId) {
+            return null;
+        }
+
+        return Section::query()
+            ->where('id', $sectionId)
+            ->where('department_id', $formRequest->target_department_id)
+            ->with('head')
+            ->first();
+    }
+
+    // ─── CC ──────────────────────────────────────────────────────────
 
     public function syncCcUsers(FormRequest $formRequest, User $actor, array $userIds): FormRequest
     {
@@ -339,14 +372,13 @@ class RequestWorkflowService
 
         $validIds = User::query()
             ->where('status', 'active')
-            ->where('department_id', $formRequest->target_department_id)
             ->whereIn('id', $userIds)
             ->pluck('id')
             ->all();
 
         if (count($validIds) !== count($userIds)) {
             throw ValidationException::withMessages([
-                'user_ids' => ['CC users must be active members of the target department.'],
+                'user_ids' => ['All CC users must be active.'],
             ]);
         }
 
@@ -391,174 +423,46 @@ class RequestWorkflowService
         });
     }
 
-    public function returnToDeptAdmin(FormRequest $formRequest, User $processor, string $remark): FormRequest
-    {
-        if ($formRequest->status !== RequestStatus::Assigned) {
-            throw ValidationException::withMessages([
-                'status' => ['Only assigned requests can be returned to department admin.'],
-            ]);
-        }
+    // ─── Unified Approve / Reject / Return ───────────────────────────
 
-        return DB::transaction(function () use ($formRequest, $processor, $remark) {
-            $from = $formRequest->status->value;
-
-            $formRequest->update([
-                'status' => RequestStatus::DeptApproved,
-                'assigned_to_id' => null,
-                'assigned_by_id' => null,
-                'assigned_at' => null,
-            ]);
-
-            $this->logAction($formRequest, $processor, 'returned_to_dept', $from, RequestStatus::DeptApproved->value, null, null, $remark);
-            $this->auditService->log(AuditAction::Returned, $formRequest, $processor, null, ['remark' => $remark, 'stage' => 'return_to_dept']);
-
-            $message = "Request \"{$formRequest->title}\" was returned by {$processor->name} for reassignment.";
-            $this->notifyTargetDepartmentForAssignment($formRequest, $message);
-            $this->notifyCcUsers($formRequest, 'Request Returned to Department', $message);
-
-            $updated = $formRequest->fresh($this->defaultRelations());
-            $this->broadcastUpdate($updated);
-
-            return $updated;
-        });
-    }
-
-    public function deptReturnToSubmitter(FormRequest $formRequest, User $actor, string $remark): FormRequest
-    {
-        if ($formRequest->status !== RequestStatus::DeptApproved) {
-            throw ValidationException::withMessages([
-                'status' => ['Only department-approved requests can be returned to the requester.'],
-            ]);
-        }
-
-        return DB::transaction(function () use ($formRequest, $actor, $remark) {
-            $from = $formRequest->status->value;
-
-            $formRequest->update([
-                'status' => RequestStatus::Returned,
-                'assigned_to_id' => null,
-                'assigned_by_id' => null,
-                'assigned_at' => null,
-            ]);
-
-            $this->logAction($formRequest, $actor, 'returned_to_requester', $from, RequestStatus::Returned->value, null, null, $remark);
-            $this->auditService->log(AuditAction::Returned, $formRequest, $actor, null, ['remark' => $remark, 'stage' => 'dept_to_requester']);
-
-            $this->notifyUser($formRequest->user, 'Request Returned', "Your request \"{$formRequest->title}\" was returned by department admin. Remark: {$remark}");
-
-            $updated = $formRequest->fresh($this->defaultRelations());
-            $this->broadcastUpdate($updated);
-
-            return $updated;
-        });
-    }
-
-    protected function resolveAssignee(FormRequest $formRequest, int $assignedToId): User
-    {
-        $query = User::query()->where('id', $assignedToId)->where('status', 'active');
-
-        if ($formRequest->status === RequestStatus::AtSection && $formRequest->target_section_id) {
-            $assignee = $query->where('section_id', $formRequest->target_section_id)->first();
-        } else {
-            $assignee = $query->where('department_id', $formRequest->target_department_id)->first();
-        }
-
-        if (! $assignee) {
-            throw ValidationException::withMessages([
-                'assigned_to_id' => ['Selected user must be an active member of the target department/section.'],
-            ]);
-        }
-
-        return $assignee;
-    }
-
-    public function returnForRevision(FormRequest $formRequest, User $processor, string $remark): FormRequest
+    public function approve(FormRequest $formRequest, User $actor, string $remark): FormRequest
     {
         return match ($formRequest->status) {
-            RequestStatus::Submitted => $this->deptReviewReturn($formRequest, $processor, $remark),
-            RequestStatus::DeptApproved => $this->deptReturnToSubmitter($formRequest, $processor, $remark),
-            RequestStatus::Assigned => $this->returnToDeptAdmin($formRequest, $processor, $remark),
+            RequestStatus::Submitted => $this->deptReviewApprove($formRequest, $actor, $remark),
+            RequestStatus::DeptApproved => $this->targetDeptApprove($formRequest, $actor, $remark),
+            RequestStatus::AtSection => $this->sectionApprove($formRequest, $actor, $remark),
+            default => throw ValidationException::withMessages([
+                'status' => ['This request cannot be approved in its current status.'],
+            ]),
+        };
+    }
+
+    public function reject(FormRequest $formRequest, User $actor, string $remark): FormRequest
+    {
+        return match ($formRequest->status) {
+            RequestStatus::Submitted => $this->deptReviewReject($formRequest, $actor, $remark),
+            RequestStatus::DeptApproved, RequestStatus::AtSection => $this->reviewDecision(
+                $formRequest, $actor, 'rejected', RequestStatus::Rejected, $remark, AuditAction::Rejected
+            ),
+            default => throw ValidationException::withMessages([
+                'status' => ['This request cannot be rejected in its current status.'],
+            ]),
+        };
+    }
+
+    public function returnForRevision(FormRequest $formRequest, User $actor, string $remark): FormRequest
+    {
+        return match ($formRequest->status) {
+            RequestStatus::Submitted, RequestStatus::DeptApproved, RequestStatus::AtSection => $this->reviewDecision(
+                $formRequest, $actor, 'returned', RequestStatus::Returned, $remark, AuditAction::Returned
+            ),
             default => throw ValidationException::withMessages([
                 'status' => ['This request cannot be returned in its current status.'],
             ]),
         };
     }
 
-    public function approve(FormRequest $formRequest, User $processor, string $remark): FormRequest
-    {
-        if ($formRequest->status === RequestStatus::Submitted) {
-            return $this->deptReviewApprove($formRequest, $processor, $remark);
-        }
-
-        return $this->processDecision($formRequest, $processor, 'approved', RequestStatus::Approved, $remark, true);
-    }
-
-    public function reject(FormRequest $formRequest, User $processor, string $remark): FormRequest
-    {
-        if ($formRequest->status === RequestStatus::Submitted) {
-            return $this->deptReviewReject($formRequest, $processor, $remark);
-        }
-
-        return $this->processDecision($formRequest, $processor, 'rejected', RequestStatus::Rejected, $remark, false);
-    }
-
-    protected function processDecision(
-        FormRequest $formRequest,
-        User $processor,
-        string $action,
-        RequestStatus $toStatus,
-        string $remark,
-        bool $isApproval,
-    ): FormRequest {
-        if ($formRequest->status !== RequestStatus::Assigned) {
-            throw ValidationException::withMessages([
-                'status' => ['Only assigned requests can be processed at this stage.'],
-            ]);
-        }
-
-        if ($formRequest->user_id === $processor->id) {
-            throw ValidationException::withMessages([
-                'user' => ['You cannot process your own request.'],
-            ]);
-        }
-
-        return DB::transaction(function () use ($formRequest, $processor, $action, $toStatus, $remark, $isApproval) {
-            $from = $formRequest->status->value;
-
-            $updates = ['status' => $toStatus];
-
-            if ($isApproval) {
-                $updates['final_approved_by_id'] = $processor->id;
-                $updates['final_approved_at'] = now();
-                $updates['completed_at'] = now();
-            }
-
-            $formRequest->update($updates);
-
-            $this->logAction($formRequest, $processor, $action, $from, $toStatus->value, null, null, $remark);
-
-            $title = match ($action) {
-                'approved' => 'Request Approved',
-                'rejected' => 'Request Rejected',
-                default => 'Request Returned',
-            };
-
-            $this->notifyUser($formRequest->user, $title, "Your request \"{$formRequest->title}\" was {$action}.");
-
-            $audit = match ($action) {
-                'approved' => AuditAction::Approved,
-                'rejected' => AuditAction::Rejected,
-                default => AuditAction::Returned,
-            };
-
-            $this->auditService->log($audit, $formRequest, $processor, null, ['remark' => $remark, 'stage' => 'final']);
-
-            $updated = $formRequest->fresh($this->defaultRelations());
-            $this->broadcastUpdate($updated);
-
-            return $updated;
-        });
-    }
+    // ─── Helpers ─────────────────────────────────────────────────────
 
     protected function logAction(
         FormRequest $formRequest,
@@ -601,13 +505,13 @@ class RequestWorkflowService
     {
         $department = $formRequest->reviewDepartment ?? $formRequest->targetDepartment;
         $head = $department?->head;
-        $this->notifyUser($head, 'New Request for Review', "New request \"{$formRequest->title}\" is waiting for department admin review.");
+        $this->notifyUser($head, 'New Request for Review', "New request \"{$formRequest->title}\" is waiting for your review.");
     }
 
-    protected function notifyTargetDepartmentForAssignment(FormRequest $formRequest, string $message): void
+    protected function notifyTargetDepartment(FormRequest $formRequest, string $title, string $message): void
     {
         $head = $formRequest->targetDepartment?->head;
-        $this->notifyUser($head, 'Request Ready for Assignment', $message);
+        $this->notifyUser($head, $title, $message);
     }
 
     protected function notifyCcUsers(FormRequest $formRequest, string $title, string $message): void
@@ -629,14 +533,12 @@ class RequestWorkflowService
             'targetSection',
             'reviewDepartment',
             'deptReviewedBy',
-            'assignedTo',
-            'assignedBy',
             'finalApprovedBy',
             'ccUsers.department',
             'comments.user',
             'actions.user',
-            'actions.assignedTo',
             'actions.targetSection',
+            'attachments.uploader',
         ];
     }
 }

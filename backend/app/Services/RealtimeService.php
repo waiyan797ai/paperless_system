@@ -12,13 +12,13 @@ class RealtimeService
 {
     public function bumpForFormRequest(FormRequest $formRequest): void
     {
-        $formRequest->loadMissing(['user', 'assignedTo', 'targetDepartment', 'reviewDepartment', 'ccUsers']);
+        $formRequest->loadMissing(['user', 'targetDepartment', 'targetSection', 'reviewDepartment', 'ccUsers']);
 
         $userIds = array_filter([
             $formRequest->user_id,
-            $formRequest->assigned_to_id,
             $formRequest->targetDepartment?->head_id,
             $formRequest->reviewDepartment?->head_id,
+            $formRequest->targetSection?->head_id,
         ]);
 
         foreach ($formRequest->ccUsers as $ccUser) {

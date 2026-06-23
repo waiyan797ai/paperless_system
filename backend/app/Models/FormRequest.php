@@ -110,6 +110,11 @@ class FormRequest extends Model
         return $this->hasMany(RequestApproval::class)->orderBy('step');
     }
 
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(FormRequestAttachment::class)->latest();
+    }
+
     public function ccUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'form_request_cc_users')

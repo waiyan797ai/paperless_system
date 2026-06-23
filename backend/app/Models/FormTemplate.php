@@ -16,6 +16,7 @@ class FormTemplate extends Model
         'target_department_id',
         'target_section_id',
         'status',
+        'attachment_type',
         'created_by',
     ];
 

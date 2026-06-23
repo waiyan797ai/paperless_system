@@ -45,11 +45,9 @@ export function formatFileSize(bytes) {
 
 export function getStatusColor(status) {
   const map = {
-    pending: 'warning',
     submitted: 'info',
     dept_approved: 'gold',
     at_section: 'info',
-    assigned: 'warning',
     returned: 'warning',
     approved: 'success',
     rejected: 'danger',

@@ -151,7 +151,7 @@ class RealtimeController extends Controller
 
     protected function folderCounts(User $user): array
     {
-        $folders = ['outbox', 'inbox', 'to_assign', 'section_inbox', 'assign', 'cc', 'approved', 'rejected'];
+        $folders = ['outbox', 'inbox', 'dept_review', 'section_inbox', 'cc', 'approved', 'rejected'];
         $counts = [];
 
         foreach ($folders as $folder) {
@@ -170,21 +170,19 @@ class RealtimeController extends Controller
                 ->where('status', '!=', RequestStatus::Draft->value),
             'inbox' => $query->where('review_department_id', $user->department_id)
                 ->where('status', RequestStatus::Submitted->value),
-            'to_assign' => $query->where('target_department_id', $user->department_id)
+            'dept_review' => $query->where('target_department_id', $user->department_id)
                 ->where('status', RequestStatus::DeptApproved->value),
             'section_inbox' => $query->where('target_section_id', $user->section_id)
                 ->where('status', RequestStatus::AtSection->value),
-            'assign' => $query->where('assigned_to_id', $user->id)
-                ->where('status', RequestStatus::Assigned->value),
             'cc' => $query->whereHas('ccUsers', fn ($q) => $q->where('users.id', $user->id)),
             'approved' => $query->where('status', RequestStatus::Approved->value)
                 ->when(! $user->isAdminLevel(), fn ($q) => $q->where(fn ($inner) => $inner
                     ->where('user_id', $user->id)
-                    ->orWhere('assigned_to_id', $user->id))),
+                    ->orWhere('target_department_id', $user->department_id))),
             'rejected' => $query->where('status', RequestStatus::Rejected->value)
                 ->when(! $user->isAdminLevel(), fn ($q) => $q->where(fn ($inner) => $inner
                     ->where('user_id', $user->id)
-                    ->orWhere('assigned_to_id', $user->id))),
+                    ->orWhere('target_department_id', $user->department_id))),
             default => $query,
         };
     }

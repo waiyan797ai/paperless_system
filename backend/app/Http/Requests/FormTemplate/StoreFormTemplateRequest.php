@@ -23,6 +23,7 @@ class StoreFormTemplateRequest extends FormRequest
             'target_department_id' => ['nullable', 'exists:departments,id'],
             'target_section_id' => ['nullable', 'exists:sections,id'],
             'status' => ['nullable', 'in:active,inactive'],
+            'attachment_type' => ['nullable', 'in:none,single,multiple'],
             'fields' => ['required', 'array', 'min:1'],
             'fields.*.name' => ['required', 'string', 'max:100'],
             'fields.*.label' => ['required', 'string', 'max:255'],

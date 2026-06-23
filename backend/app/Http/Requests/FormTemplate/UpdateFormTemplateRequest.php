@@ -25,6 +25,7 @@ class UpdateFormTemplateRequest extends FormRequest
             'target_department_id' => ['nullable', 'exists:departments,id'],
             'target_section_id' => ['nullable', 'exists:sections,id'],
             'status' => ['nullable', 'in:active,inactive'],
+            'attachment_type' => ['nullable', 'in:none,single,multiple'],
             'fields' => ['sometimes', 'array', 'min:1'],
             'fields.*.name' => ['required_with:fields', 'string', 'max:100'],
             'fields.*.label' => ['required_with:fields', 'string', 'max:255'],

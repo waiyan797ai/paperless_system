@@ -84,7 +84,10 @@ export function RealtimeProvider({ children }) {
 
         const notifications = notifRes.data?.data?.data || notifRes.data?.data || []
         const latest = notifications[0]
-        if (latest?.id && latest.id > lastNotificationIdRef.current) {
+        if (lastNotificationIdRef.current === 0) {
+          // First poll — set baseline without showing toasts for existing notifications
+          if (latest?.id) lastNotificationIdRef.current = latest.id
+        } else if (latest?.id && latest.id > lastNotificationIdRef.current) {
           const newOnes = notifications.filter((n) => n.id > lastNotificationIdRef.current)
           newOnes.reverse().forEach((n) => {
             prependNotification(n)
@@ -94,8 +97,6 @@ export function RealtimeProvider({ children }) {
             }
           })
           lastNotificationIdRef.current = latest.id
-        } else if (notifications.length && lastNotificationIdRef.current === 0) {
-          lastNotificationIdRef.current = notifications[0].id
         }
       } catch {
         // ignore transient network errors during polling
@@ -115,8 +116,12 @@ export function RealtimeProvider({ children }) {
     const token = localStorage.getItem('oms_token')
     if (!token) return undefined
 
-    // Create WebSocket connection
-    const wsUrl = `ws://localhost:8080/app/${import.meta.env.VITE_PUSHER_APP_KEY || 'local-key'}`
+    // Create WebSocket connection — use wss:// in production via nginx reverse proxy at /ws
+    const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const wsHost = import.meta.env.VITE_PUSHER_HOST || window.location.hostname
+    const wsPort = import.meta.env.VITE_PUSHER_PORT || window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+    const wsPath = import.meta.env.VITE_PUSHER_PATH || '/ws/'
+    const wsUrl = `${wsScheme}://${wsHost}:${wsPort}${wsPath}app/${import.meta.env.VITE_PUSHER_APP_KEY || 'local-key'}`
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {

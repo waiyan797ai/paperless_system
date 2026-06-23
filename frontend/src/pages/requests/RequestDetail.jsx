@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, XCircle, RotateCcw, UserPlus, ArrowRightToLine, Users, Trash2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, RotateCcw, ArrowRightToLine, Users, Trash2, Paperclip, Download } from 'lucide-react'
 import PageTransition, { PageHeader } from '../../components/layout/PageTransition'
 import Card, { CardTitle } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -22,22 +22,30 @@ const actionLabels = {
   source_endorsed: 'Source Department Endorsed',
   dept_approved: 'Department Approved',
   forwarded_section: 'Forwarded to Section',
-  assigned: 'Assigned',
   cc_updated: 'CC Updated',
-  returned_to_dept: 'Returned to Dept Admin',
-  returned_to_requester: 'Returned to Requester',
-  approve: 'Final Approved',
-  approved: 'Final Approved',
-  reject: 'Rejected',
+  approved: 'Approved',
   rejected: 'Rejected',
-  return: 'Returned',
   returned: 'Returned',
 }
 
-function getReturnModalTitle(status, role) {
+function getApproveModalTitle(status) {
+  if (status === 'submitted') return 'Approve Request (Department Review)'
+  if (status === 'dept_approved') return 'Approve Request (Target Department)'
+  if (status === 'at_section') return 'Approve Request (Section)'
+  return 'Approve Request'
+}
+
+function getRejectModalTitle(status) {
+  if (status === 'submitted') return 'Reject Request (Department Review)'
+  if (status === 'dept_approved') return 'Reject Request (Target Department)'
+  if (status === 'at_section') return 'Reject Request (Section)'
+  return 'Reject Request'
+}
+
+function getReturnModalTitle(status) {
   if (status === 'submitted') return 'Return to Requester (Department Review)'
   if (status === 'dept_approved') return 'Return to Requester'
-  if (status === 'assigned' && role === 'assignee') return 'Return to Manager'
+  if (status === 'at_section') return 'Return to Requester'
   return 'Return Request'
 }
 
@@ -50,19 +58,17 @@ export default function RequestDetail() {
   const invalidateFormRequests = useInvalidateFormRequests()
   const { data: request, isLoading: loading, isError, isFetching, refetch } = useFormRequestDetail(id)
   const [actionLoading, setActionLoading] = useState(false)
-  const [assignOpen, setAssignOpen] = useState(false)
   const [forwardOpen, setForwardOpen] = useState(false)
   const [ccOpen, setCcOpen] = useState(false)
   const [actionOpen, setActionOpen] = useState(null)
   const [remark, setRemark] = useState('')
-  const [assignRemark, setAssignRemark] = useState('')
-  const [assignableUsers, setAssignableUsers] = useState([])
   const [ccCandidates, setCcCandidates] = useState([])
   const [selectedCcIds, setSelectedCcIds] = useState([])
-  const [assignToId, setAssignToId] = useState('')
   const [sections, setSections] = useState([])
   const [forwardSectionId, setForwardSectionId] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [commentLoading, setCommentLoading] = useState(false)
 
   useEffect(() => {
     if (isError) {
@@ -78,13 +84,13 @@ export default function RequestDetail() {
   }
 
   const isOwner = request?.user_id === user?.id
-  const isAssignee = request?.assigned_to_id === user?.id
   const isTargetDept = request?.target_department_id === user?.department_id
   const isReviewDept = request?.review_department_id === user?.department_id
   const isSectionScope = request?.target_section_id === user?.section_id
-  const isAdmin = hasPermission(user, 'roles.manage')
+  const isAdmin = isAdminLevel(user)
   const isDeptAdmin = hasRole(user, 'department', 'admin')
 
+  // Own dept head can approve/reject/return submitted requests
   const canReviewDept =
     !isOwner
     && request?.status === 'submitted'
@@ -92,56 +98,34 @@ export default function RequestDetail() {
     && (isDeptAdmin || isAdmin)
     && (isReviewDept || isAdmin)
 
-  const canReturnToRequester =
+  // Target dept head can approve/reject/return dept_approved requests
+  const canTargetDeptApprove =
     !isOwner
     && request?.status === 'dept_approved'
     && hasPermission(user, 'form_requests.approve')
     && (isTargetDept || isAdmin)
     && (isDeptAdmin || isAdmin)
 
+  // Section head can approve/reject/return at_section requests
+  const canSectionApprove =
+    !isOwner
+    && request?.status === 'at_section'
+    && hasPermission(user, 'form_requests.approve')
+    && (isSectionScope || isAdmin)
+
   const canManageCc =
     (isDeptAdmin || isAdmin)
-    && ((request?.status === 'submitted' && (isReviewDept || isAdmin))
-      || (request?.status === 'dept_approved' && (isTargetDept || isAdmin)))
+    && ['submitted', 'dept_approved', 'at_section'].includes(request?.status)
+    && (isReviewDept || isTargetDept || isAdmin)
 
   const canForwardSection =
     request?.status === 'dept_approved'
     && hasPermission(user, 'form_requests.forward_section')
     && (isTargetDept || isAdmin)
 
-  const canAssignDept =
-    request?.status === 'dept_approved'
-    && hasPermission(user, 'form_requests.assign')
-    && (isDeptAdmin || isAdmin)
-    && (isTargetDept || isAdmin)
-
-  const canAssignSection =
-    request?.status === 'at_section'
-    && hasPermission(user, 'form_requests.assign')
-    && (isSectionScope || isAdmin)
-
-  const canAssign = canAssignDept || canAssignSection
-  const canProcess =
-    !isOwner
-    && request?.status === 'assigned'
-    && isAssignee
-    && (hasPermission(user, 'form_requests.process') || hasPermission(user, 'form_requests.approve'))
-
   const canEdit = isOwner && ['draft', 'returned'].includes(request?.status)
   const canSubmit = isOwner && ['draft', 'returned'].includes(request?.status)
-  const canDelete = isAdminLevel(user) || (isOwner && request?.status !== 'approved')
-
-  const openAssignModal = async () => {
-    try {
-      const { data } = await api.get(`/form-requests/${id}/assignable-users`)
-      setAssignableUsers(data.data || [])
-      setAssignToId('')
-      setAssignRemark('')
-      setAssignOpen(true)
-    } catch {
-      addToast('Failed to load assignable users', 'error')
-    }
-  }
+  const canDelete = isAdmin || (isOwner && request?.status !== 'approved')
 
   const openCcModal = async () => {
     try {
@@ -164,24 +148,6 @@ export default function RequestDetail() {
       setForwardOpen(true)
     } catch {
       addToast('Failed to load sections', 'error')
-    }
-  }
-
-  const handleAssign = async () => {
-    if (!assignToId) return
-    setActionLoading(true)
-    try {
-      await api.post(`/form-requests/${id}/assign`, {
-        assigned_to_id: assignToId,
-        remark: assignRemark.trim() || undefined,
-      })
-      addToast('Request assigned', 'success')
-      setAssignOpen(false)
-      await refreshRequest()
-    } catch (err) {
-      addToast(err.response?.data?.message || 'Assign failed', 'error')
-    } finally {
-      setActionLoading(false)
     }
   }
 
@@ -229,9 +195,9 @@ export default function RequestDetail() {
     setActionLoading(true)
     try {
       await api.post(`/form-requests/${id}/${action}`, { comments: remark })
-      const msg = action === 'return'
-        ? (request.status === 'assigned' ? 'Returned to department admin' : 'Returned to requester')
-        : `Request ${action}${action === 'approve' ? 'd' : 'ed'}`
+      const msg = action === 'approve' ? 'Request approved'
+        : action === 'reject' ? 'Request rejected'
+        : 'Request returned'
       addToast(msg, 'success')
       setActionOpen(null)
       setRemark('')
@@ -271,6 +237,21 @@ export default function RequestDetail() {
     }
   }
 
+  const handleAddComment = async (e) => {
+    e.preventDefault()
+    if (!newComment.trim()) return
+    setCommentLoading(true)
+    try {
+      await api.post(`/form-requests/${id}/comments`, { comment: newComment.trim() })
+      setNewComment('')
+      await refreshRequest()
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to add comment', 'error')
+    } finally {
+      setCommentLoading(false)
+    }
+  }
+
   if (loading) {
     return <div className="py-12 flex justify-center"><LoadingSpinner label="Loading request..." /></div>
   }
@@ -278,9 +259,6 @@ export default function RequestDetail() {
   if (!request) return null
 
   const fields = request.form_template?.fields || []
-  const assignScopeLabel = request.status === 'at_section'
-    ? request.target_section?.name || 'section'
-    : request.target_department?.name || 'department'
 
   return (
     <PageTransition>
@@ -319,19 +297,18 @@ export default function RequestDetail() {
                 <Button variant="danger" onClick={() => setActionOpen('reject')}><XCircle className="h-4 w-4" /> Reject</Button>
               </>
             )}
-            {canReturnToRequester && (
-              <Button variant="secondary" onClick={() => setActionOpen('return')}><RotateCcw className="h-4 w-4" /> Return to Requester</Button>
-            )}
-            {canForwardSection && (
-              <Button variant="secondary" onClick={openForwardModal}><ArrowRightToLine className="h-4 w-4" /> Forward to Section</Button>
-            )}
-            {canAssign && (
-              <Button variant="gold" onClick={openAssignModal}><UserPlus className="h-4 w-4" /> Assign</Button>
-            )}
-            {canProcess && (
+            {canTargetDeptApprove && (
               <>
                 <Button variant="gold" onClick={() => setActionOpen('approve')}><CheckCircle className="h-4 w-4" /> Approve</Button>
-                <Button variant="secondary" onClick={() => setActionOpen('return')}><RotateCcw className="h-4 w-4" /> Return to Dept Admin</Button>
+                <Button variant="secondary" onClick={openForwardModal}><ArrowRightToLine className="h-4 w-4" /> Forward to Section</Button>
+                <Button variant="secondary" onClick={() => setActionOpen('return')}><RotateCcw className="h-4 w-4" /> Return</Button>
+                <Button variant="danger" onClick={() => setActionOpen('reject')}><XCircle className="h-4 w-4" /> Reject</Button>
+              </>
+            )}
+            {canSectionApprove && (
+              <>
+                <Button variant="gold" onClick={() => setActionOpen('approve')}><CheckCircle className="h-4 w-4" /> Approve</Button>
+                <Button variant="secondary" onClick={() => setActionOpen('return')}><RotateCcw className="h-4 w-4" /> Return</Button>
                 <Button variant="danger" onClick={() => setActionOpen('reject')}><XCircle className="h-4 w-4" /> Reject</Button>
               </>
             )}
@@ -410,7 +387,6 @@ export default function RequestDetail() {
                     </div>
                     <p className="text-xs text-[var(--text-muted)] mt-1">
                       by {a.user?.name || '—'}
-                      {a.assigned_to?.name && ` → ${a.assigned_to.name}`}
                       {a.target_section?.name && ` → ${a.target_section.name}`}
                     </p>
                     {a.remark && (
@@ -421,6 +397,71 @@ export default function RequestDetail() {
               </div>
             </div>
           )}
+
+          {request.attachments?.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-[var(--border-color)]">
+              <CardTitle className="mb-4">Attachments</CardTitle>
+              <div className="space-y-2">
+                {request.attachments.map((att) => (
+                  <div key={att.id} className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Paperclip className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                      <span className="text-sm font-medium truncate">{att.file_name}</span>
+                      <span className="text-xs text-[var(--text-muted)] shrink-0">{(att.file_size / 1024).toFixed(0)} KB</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await api.get(`/form-requests/${id}/attachments/${att.id}/download`, { responseType: 'blob' })
+                          const url = window.URL.createObjectURL(new Blob([res.data]))
+                          const link = document.createElement('a')
+                          link.href = url
+                          link.download = att.file_name
+                          link.click()
+                          window.URL.revokeObjectURL(url)
+                        } catch { addToast('Failed to download file', 'error') }
+                      }}
+                      className="text-gold-600 hover:text-gold-700 shrink-0 ml-2"
+                      title="Download"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-8 pt-6 border-t border-[var(--border-color)]">
+            <CardTitle className="mb-4">Comments</CardTitle>
+            {request.comments?.length > 0 && (
+              <div className="space-y-3 mb-4">
+                {request.comments.map((c) => (
+                  <div key={c.id} className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">{c.user?.name || '—'}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{formatDate(c.created_at)}</p>
+                    </div>
+                    <p className="text-sm text-[var(--text-primary)] mt-1 whitespace-pre-wrap">{c.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {request.status !== 'draft' && (
+              <form onSubmit={handleAddComment} className="flex gap-2">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  rows={2}
+                  className="flex-1 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm resize-y"
+                  placeholder="Add a comment..."
+                />
+                <Button type="submit" variant="secondary" size="sm" loading={commentLoading} disabled={!newComment.trim()}>
+                  Send
+                </Button>
+              </form>
+            )}
+          </div>
         </Card>
 
         <Card>
@@ -433,11 +474,18 @@ export default function RequestDetail() {
             <div>
               <p className="text-[var(--text-muted)]">Requester</p>
               <p className="font-medium mt-1">{request.user?.name || '—'}</p>
+              <p className="text-xs text-[var(--text-muted)]">{request.user?.department?.name}</p>
             </div>
             <div>
               <p className="text-[var(--text-muted)]">Target Department</p>
               <p className="font-medium mt-1">{request.target_department?.name || '—'}</p>
             </div>
+            {request.target_section && (
+              <div>
+                <p className="text-[var(--text-muted)]">Target Section</p>
+                <p className="font-medium mt-1">{request.target_section.name}</p>
+              </div>
+            )}
             {request.review_department && (
               <div>
                 <p className="text-[var(--text-muted)]">Review Department</p>
@@ -451,10 +499,6 @@ export default function RequestDetail() {
                 <p className="text-xs text-[var(--text-muted)]">{formatDate(request.dept_reviewed_at)}</p>
               </div>
             )}
-            <div>
-              <p className="text-[var(--text-muted)]">Assigned To</p>
-              <p className="font-medium mt-1">{request.assigned_to?.name || '—'}</p>
-            </div>
             {request.cc_users?.length > 0 && (
               <div>
                 <p className="text-[var(--text-muted)]">CC</p>
@@ -480,47 +524,14 @@ export default function RequestDetail() {
         </Card>
       </div>
 
-      <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Request" footer={
-        <>
-          <Button variant="secondary" onClick={() => setAssignOpen(false)}>Cancel</Button>
-          <Button variant="gold" onClick={handleAssign} loading={actionLoading}>Assign</Button>
-        </>
-      }>
-        <div className="space-y-4">
-          <p className="text-sm text-[var(--text-muted)]">
-            Assign to active staff from <strong>{assignScopeLabel}</strong>.
-          </p>
-          <Select
-            label="Assign to"
-            value={assignToId}
-            onChange={(e) => setAssignToId(e.target.value)}
-            options={assignableUsers.map((u) => ({
-              value: String(u.id),
-              label: u.position ? `${u.name} (${u.position})` : u.name,
-            }))}
-            placeholder={assignableUsers.length ? 'Select staff member...' : 'No staff available'}
-          />
-          <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Remark (optional)</label>
-            <textarea
-              value={assignRemark}
-              onChange={(e) => setAssignRemark(e.target.value)}
-              rows={3}
-              className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-3 text-sm resize-y"
-              placeholder="Add a note for the assignee..."
-            />
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={ccOpen} onClose={() => setCcOpen(false)} title="Manage CC (Manager Only)" footer={
+      <Modal open={ccOpen} onClose={() => setCcOpen(false)} title="Manage CC" footer={
         <>
           <Button variant="secondary" onClick={() => setCcOpen(false)}>Cancel</Button>
           <Button variant="gold" onClick={handleSaveCc} loading={actionLoading}>Save CC</Button>
         </>
       }>
         <p className="text-sm text-[var(--text-muted)] mb-4">
-          CC users from <strong>{request.target_department?.name}</strong> will be notified and can view this request.
+          CC users will be notified and can view &amp; comment on this request.
         </p>
         <div className="max-h-64 overflow-y-auto space-y-2">
           {ccCandidates.map((candidate) => (
@@ -552,7 +563,7 @@ export default function RequestDetail() {
         </>
       }>
         <p className="text-sm text-[var(--text-muted)] mb-3">
-          Forward this request to a section within <strong>{request.target_department?.name}</strong>.
+          Forward this request to a section within <strong>{request.target_department?.name}</strong>. The section head will approve.
         </p>
         <Select
           label="Section"
@@ -584,10 +595,10 @@ export default function RequestDetail() {
         onClose={() => { setActionOpen(null); setRemark('') }}
         title={
           actionOpen === 'approve'
-            ? (request.status === 'submitted' ? 'Approve Request (Department Review)' : 'Final Approve Request')
+            ? getApproveModalTitle(request.status)
             : actionOpen === 'reject'
-              ? (request.status === 'submitted' ? 'Reject Request (Department Review)' : 'Reject Request')
-              : getReturnModalTitle(request.status, canProcess ? 'assignee' : 'admin')
+              ? getRejectModalTitle(request.status)
+              : getReturnModalTitle(request.status)
         }
         footer={
           <>
