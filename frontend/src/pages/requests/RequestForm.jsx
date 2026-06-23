@@ -92,9 +92,92 @@ function ItemsField({ field, value, onChange }) {
   )
 }
 
-function DynamicField({ field, value, onChange }) {
+function AttachmentField({ field, requestId, onUploaded, onDeleted }) {
+  const { addToast } = useToast()
+  const [uploading, setUploading] = useState(false)
+  const files = field._attachments || []
+
+  const handleUpload = async (e) => {
+    const selected = Array.from(e.target.files || [])
+    if (!selected.length) return
+    if (!requestId) {
+      addToast('Save as draft first before uploading', 'warning')
+      return
+    }
+    setUploading(true)
+    try {
+      for (const file of selected) {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('field_name', field.name)
+        const { data } = await api.post(`/form-requests/${requestId}/attachments`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        onUploaded(data.data)
+      }
+      addToast('File uploaded', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Upload failed', 'error')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDelete = async (attId) => {
+    if (!requestId) return
+    try {
+      await api.delete(`/form-requests/${requestId}/attachments/${attId}`)
+      onDeleted(attId)
+      addToast('File removed', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to remove file', 'error')
+    }
+  }
+
+  const canUploadMore = field.multiple || files.length === 0
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+        <Paperclip className="h-4 w-4 inline mr-1" />
+        {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+        <span className="ml-1 text-xs text-[var(--text-muted)]">{field.multiple ? '(multiple files)' : '(single file)'}</span>
+      </label>
+      {files.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {files.map((att) => (
+            <div key={att.id} className="flex items-center justify-between p-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                <span className="text-sm truncate">{att.file_name}</span>
+                <span className="text-xs text-[var(--text-muted)] shrink-0">{(att.file_size / 1024).toFixed(0)} KB</span>
+              </div>
+              <button type="button" onClick={() => handleDelete(att.id)} className="text-[var(--text-muted)] hover:text-red-500 shrink-0 ml-2">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {canUploadMore && (
+        <label className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-[var(--border-color)] hover:border-gold-500 cursor-pointer transition-colors">
+          <Upload className="h-4 w-4 text-[var(--text-muted)]" />
+          <span className="text-sm text-[var(--text-muted)]">{uploading ? 'Uploading...' : 'Click to upload file'}</span>
+          <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} multiple={field.multiple} />
+        </label>
+      )}
+    </div>
+  )
+}
+
+function DynamicField({ field, value, onChange, requestId, onUploaded, onDeleted }) {
   if (field.type === 'items') {
     return <ItemsField field={field} value={value} onChange={onChange} />
+  }
+
+  if (field.type === 'attachment') {
+    return <AttachmentField field={field} requestId={requestId} onUploaded={onUploaded} onDeleted={onDeleted} />
   }
   const common = {
     label: field.label,
@@ -406,14 +489,22 @@ export default function RequestForm() {
             disabled={!targetDepartmentId || sectionLocked}
           />
 
-          {selectedTemplate?.fields?.map((field) => (
-            <DynamicField
-              key={field.name}
-              field={field}
-              value={formData[field.name]}
-              onChange={(val) => updateField(field.name, val)}
-            />
-          ))}
+          {selectedTemplate?.fields?.map((field) => {
+            const fieldWithAtts = field.type === 'attachment'
+              ? { ...field, _attachments: attachments.filter((a) => a.field_name === field.name) }
+              : field
+            return (
+              <DynamicField
+                key={field.name}
+                field={fieldWithAtts}
+                value={formData[field.name]}
+                onChange={(val) => updateField(field.name, val)}
+                requestId={id}
+                onUploaded={(att) => setAttachments((prev) => [att, ...prev])}
+                onDeleted={(attId) => setAttachments((prev) => prev.filter((a) => a.id !== attId))}
+              />
+            )
+          })}
 
           {selectedTemplate && selectedTemplate.attachment_type !== 'none' && (
             <div>

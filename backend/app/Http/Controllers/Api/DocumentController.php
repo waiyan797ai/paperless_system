@@ -46,19 +46,25 @@ class DocumentController extends Controller
         $direction = $request->input('direction', 'incoming');
 
         if ($direction === 'outgoing') {
-            $query->where('uploaded_by', $user->id);
+            if ($user->isAdminLevel()) {
+                // Admin sees all outgoing
+            } elseif ($user->department_id) {
+                // Show documents uploaded by anyone in the user's department
+                $query->whereHas('uploader', fn ($q) => $q->where('department_id', $user->department_id));
+            } else {
+                $query->where('uploaded_by', $user->id);
+            }
         } elseif (! $user->isAdminLevel()) {
-            $query->where('uploaded_by', '!=', $user->id)
-                ->where(function ($q) use ($user) {
-                    if ($user->isDepartmentAdmin()) {
-                        $q->whereHas(
-                            'distributions.recipients',
-                            fn ($rq) => $rq->where('department_id', $user->department_id)
-                        );
-                    }
-
-                    $q->orWhereHas('userForwards', fn ($fq) => $fq->where('user_id', $user->id));
-                });
+            // Incoming: documents NOT from own department, distributed to own dept OR forwarded to user
+            $query->where(function ($q) use ($user) {
+                if ($user->department_id) {
+                    $q->whereHas(
+                        'distributions.recipients',
+                        fn ($rq) => $rq->where('department_id', $user->department_id)
+                    );
+                }
+                $q->orWhereHas('userForwards', fn ($fq) => $fq->where('user_id', $user->id));
+            });
         }
 
         if ($request->filled('document_type_id')) {

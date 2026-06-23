@@ -323,6 +323,38 @@ export default function RequestDetail() {
             {fields.map((field) => {
               const value = request.data?.[field.name]
 
+              if (field.type === 'attachment') {
+                const fieldAtts = (request.attachments || []).filter((a) => a.field_name === field.name)
+                return (
+                  <div key={field.name}>
+                    <p className="text-sm text-[var(--text-muted)] mb-2">
+                      <Paperclip className="h-3.5 w-3.5 inline mr-1" />
+                      {field.label}
+                      <span className="ml-1 text-xs">({field.multiple ? 'multiple files' : 'single file'})</span>
+                    </p>
+                    {fieldAtts.length === 0 ? (
+                      <p className="text-sm text-[var(--text-muted)]">—</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {fieldAtts.map((att) => (
+                          <a
+                            key={att.id}
+                            href={`/api/v1/form-requests/${request.id}/attachments/${att.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 p-2 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-surface)] text-sm"
+                          >
+                            <Paperclip className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
+                            <span className="truncate">{att.file_name}</span>
+                            <Download className="h-4 w-4 text-[var(--text-muted)] shrink-0 ml-auto" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
               if (field.type === 'items') {
                 const rows = Array.isArray(value) ? value : []
                 const columns = field.columns || []

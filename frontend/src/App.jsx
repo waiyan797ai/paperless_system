@@ -102,7 +102,7 @@ function AppRoutes() {
           <Route path="/inter-requests/:id" element={<InterRequestRedirect />} />
 
           <Route path="/documents/incoming" element={<Documents direction="incoming" />} />
-          <Route path="/documents/outgoing" element={<ProtectedRoute roles={['admin', 'department']}><Documents direction="outgoing" /></ProtectedRoute>} />
+          <Route path="/documents/outgoing" element={<Documents direction="outgoing" />} />
           <Route path="/documents/outgoing/new" element={<ProtectedRoute roles={['admin', 'department']}><DocumentDistribution /></ProtectedRoute>} />
           <Route path="/documents" element={<Navigate to="/documents/incoming" replace />} />
           <Route path="/documents/distribution" element={<Navigate to="/documents/outgoing/new" replace />} />

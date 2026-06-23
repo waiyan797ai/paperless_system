@@ -9,6 +9,7 @@ class FormRequestAttachment extends Model
 {
     protected $fillable = [
         'form_request_id',
+        'field_name',
         'uploaded_by',
         'file_name',
         'file_path',

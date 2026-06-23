@@ -48,7 +48,7 @@ const navGroups = [
     label: 'Documents',
     items: [
       { to: '/documents/incoming', icon: Inbox, label: 'Incoming mail', roles: ['admin', 'department', 'section', 'employee'] },
-      { to: '/documents/outgoing', icon: Send, label: 'Outgoing mail', roles: ['admin', 'department'] },
+      { to: '/documents/outgoing', icon: Send, label: 'Outgoing mail', roles: ['admin', 'department', 'section', 'employee'] },
       { to: '/document-types', icon: Tag, label: 'Document Types', roles: ['admin', 'department'] },
     ],
   },

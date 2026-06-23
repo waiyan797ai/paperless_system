@@ -24,6 +24,11 @@ class FormFieldValidator
                 continue;
             }
 
+            // Attachment fields are uploaded via the attachment API, not via form data
+            if ($type === 'attachment') {
+                continue;
+            }
+
             if (($field['required'] ?? false) && ($value === null || $value === '')) {
                 $validator->errors()->add("{$prefix}.{$name}", ($field['label'] ?? $name).' is required.');
             }

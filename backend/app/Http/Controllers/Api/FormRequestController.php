@@ -283,19 +283,38 @@ class FormRequestController extends Controller
     {
         $this->authorize('update', $formRequest);
 
-        $template = $formRequest->formTemplate;
-        $attachmentType = $template?->attachment_type ?? 'none';
-
-        if ($attachmentType === 'none') {
-            return response()->json(['message' => 'This form does not allow attachments.'], 422);
-        }
-
         $request->validate([
-            'file' => ['required', 'file', 'max:30720'],
+            'file'       => ['required', 'file', 'max:30720'],
+            'field_name' => ['nullable', 'string', 'max:100'],
         ]);
 
-        if ($attachmentType === 'single' && $formRequest->attachments()->count() >= 1) {
-            return response()->json(['message' => 'Only one attachment is allowed for this form.'], 422);
+        $fieldName = $request->input('field_name');
+        $template  = $formRequest->formTemplate;
+
+        if ($fieldName) {
+            // Field-level attachment: validate against template field definition
+            $fields = $template?->fields ?? [];
+            $fieldDef = collect($fields)->firstWhere('name', $fieldName);
+
+            if (! $fieldDef || ($fieldDef['type'] ?? '') !== 'attachment') {
+                return response()->json(['message' => 'Invalid attachment field.'], 422);
+            }
+
+            $isMultiple = $fieldDef['multiple'] ?? false;
+            if (! $isMultiple && $formRequest->attachments()->where('field_name', $fieldName)->count() >= 1) {
+                return response()->json(['message' => 'Only one file is allowed for this field.'], 422);
+            }
+        } else {
+            // Template-level attachment
+            $attachmentType = $template?->attachment_type ?? 'none';
+
+            if ($attachmentType === 'none') {
+                return response()->json(['message' => 'This form does not allow attachments.'], 422);
+            }
+
+            if ($attachmentType === 'single' && $formRequest->attachments()->whereNull('field_name')->count() >= 1) {
+                return response()->json(['message' => 'Only one attachment is allowed for this form.'], 422);
+            }
         }
 
         $file = $request->file('file');
@@ -303,16 +322,17 @@ class FormRequestController extends Controller
 
         $attachment = FormRequestAttachment::create([
             'form_request_id' => $formRequest->id,
-            'uploaded_by' => $request->user()->id,
-            'file_name' => $file->getClientOriginalName(),
-            'file_path' => $path,
-            'mime_type' => $file->getMimeType(),
-            'file_size' => $file->getSize(),
+            'field_name'      => $fieldName,
+            'uploaded_by'     => $request->user()->id,
+            'file_name'       => $file->getClientOriginalName(),
+            'file_path'       => $path,
+            'mime_type'       => $file->getMimeType(),
+            'file_size'       => $file->getSize(),
         ]);
 
         return response()->json([
             'message' => 'Attachment uploaded.',
-            'data' => $attachment->load('uploader'),
+            'data'    => $attachment->load('uploader'),
         ], 201);
     }
 

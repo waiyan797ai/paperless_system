@@ -24,6 +24,7 @@ const fieldTypeOptions = [
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },
   { value: 'select', label: 'Select' },
+  { value: 'attachment', label: 'Attachment (file upload)' },
 ]
 
 const emptyItemsField = {
@@ -383,6 +384,16 @@ export default function FormTemplates() {
                       onChange={(e) => updateField(index, 'options', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
                       placeholder="Option A, Option B"
                     />
+                  )}
+                  {field.type === 'attachment' && (
+                    <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                      <input
+                        type="checkbox"
+                        checked={field.multiple ?? false}
+                        onChange={(e) => updateField(index, 'multiple', e.target.checked)}
+                      />
+                      Allow multiple files
+                    </label>
                   )}
                   {field.type === 'items' && (
                     <div className="space-y-2 pt-1">
