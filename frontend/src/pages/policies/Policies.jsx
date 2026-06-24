@@ -19,6 +19,8 @@ import { useToast } from '../../components/ui/Toast'
 export default function Policies() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [deptFilter, setDeptFilter] = useState('')
+  const [departments, setDepartments] = useState([])
   const [page, setPage] = useState(1)
   const [policies, setPolicies] = useState([])
   const [totalPages, setTotalPages] = useState(1)
@@ -32,11 +34,16 @@ export default function Policies() {
   const pageSize = 10
 
   useEffect(() => {
+    api.get('/departments').then(({ data }) => setDepartments(data.data || data || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     const fetchPolicies = async () => {
       setLoading(true)
       try {
         const params = { page, per_page: pageSize, search: search || undefined }
         if (canManage && statusFilter) params.status = statusFilter
+        if (deptFilter) params.department_id = deptFilter
 
         const { data } = await api.get('/policies', { params })
         setPolicies(data.data?.data || [])
@@ -51,7 +58,7 @@ export default function Policies() {
 
     const timer = setTimeout(fetchPolicies, search ? 300 : 0)
     return () => clearTimeout(timer)
-  }, [page, search, statusFilter, canManage])
+  }, [page, search, statusFilter, deptFilter, canManage])
 
   const handleDelete = async (e, policy) => {
     e.stopPropagation()
@@ -110,6 +117,16 @@ export default function Policies() {
             placeholder="Search policies..."
             className="max-w-sm"
           />
+          <Select
+            value={deptFilter}
+            onChange={(e) => { setDeptFilter(e.target.value); setPage(1) }}
+            className="max-w-xs"
+          >
+            <option value="">All Departments</option>
+            {departments.map(d => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </Select>
           {canManage && (
             <Select
               value={statusFilter}
@@ -138,6 +155,7 @@ export default function Policies() {
                 <TableRow>
                   <TableHead>Policy</TableHead>
                   <TableHead>Policy Type</TableHead>
+                  <TableHead>Department</TableHead>
                   <TableHead>Version</TableHead>
                   {canManage && <TableHead>Status</TableHead>}
                   <TableHead>Updated</TableHead>
@@ -163,6 +181,7 @@ export default function Policies() {
                       </div>
                     </TableCell>
                     <TableCell>{policy.policy_type?.title || '—'}</TableCell>
+                    <TableCell>{policy.created_department?.name || '—'}</TableCell>
                     <TableCell><span className="font-mono text-sm">v{policy.version}</span></TableCell>
                     {canManage && (
                       <TableCell>

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
 import {
   ArrowLeft, Calendar, Clock, MapPin, Users, CheckCircle,
   XCircle, HelpCircle, Play, Square, UserCheck, FileText,
   MessageSquare, ClipboardList, Search, X, Plus, Trash2, Pencil,
-  Mic
+  Mic, Download
 } from 'lucide-react'
 import api from '../../lib/api'
 import { useAuth } from '../../hooks/useAuth'
@@ -51,10 +52,24 @@ export default function MeetingDetail() {
   const [savingAgendaTitle, setSavingAgendaTitle] = useState(false)
   const [minutesMap, setMinutesMap] = useState({})
   const [savingMinutesId, setSavingMinutesId] = useState(null)
+  const [actionItems, setActionItems] = useState([])
+  const [showNoteModal, setShowNoteModal] = useState(false)
+  const [noteForm, setNoteForm] = useState({ title: '', description: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' })
+  const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => {
     fetchMeeting()
+    fetchActionItems()
   }, [id])
+
+  const fetchActionItems = async () => {
+    try {
+      const { data } = await api.get(`/meetings/${id}/action-items`)
+      setActionItems(data.data || [])
+    } catch (err) {
+      // silent
+    }
+  }
 
   const fetchMeeting = async () => {
     try {
@@ -680,6 +695,163 @@ export default function MeetingDetail() {
     }
   }
 
+  const handleSaveNote = async () => {
+    if (!noteForm.title.trim() || !noteForm.assignee_id) {
+      addToast('Title and assignee are required', 'error')
+      return
+    }
+    setSavingNote(true)
+    try {
+      await api.post(`/meetings/${id}/action-items`, noteForm)
+      addToast('Note saved', 'success')
+      setShowNoteModal(false)
+      setNoteForm({ title: '', description: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' })
+      fetchActionItems()
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to save note', 'error')
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  const handleDeleteActionItem = async (itemId) => {
+    if (!confirm('Delete this note?')) return
+    try {
+      await api.delete(`/meetings/${id}/action-items/${itemId}`)
+      setActionItems(prev => prev.filter(a => a.id !== itemId))
+      addToast('Note deleted', 'success')
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete', 'error')
+    }
+  }
+
+  const downloadNotesPDF = () => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const margin = 14
+    const maxWidth = pageWidth - margin * 2
+    let y = 20
+
+    doc.setFontSize(18)
+    doc.setFont(undefined, 'bold')
+    doc.text('Meeting Notes & Action Items', margin, y)
+    y += 8
+
+    doc.setFontSize(10)
+    doc.setFont(undefined, 'normal')
+    doc.text(`Meeting: ${meeting?.title || ''}`, margin, y); y += 5
+    doc.text(`Date: ${meeting?.scheduled_at ? new Date(meeting.scheduled_at).toLocaleString() : ''}`, margin, y); y += 5
+    doc.text(`Total Items: ${actionItems.length}`, margin, y); y += 8
+
+    doc.setDrawColor(200); doc.line(margin, y, pageWidth - margin, y); y += 6
+
+    if (actionItems.length === 0) {
+      doc.setFontSize(12)
+      doc.text('No notes recorded.', margin, y)
+    } else {
+      actionItems.forEach((item, idx) => {
+        if (y > 270) { doc.addPage(); y = 20 }
+        doc.setFontSize(13)
+        doc.setFont(undefined, 'bold')
+        const titleLines = doc.splitTextToSize(`${idx + 1}. ${item.title}`, maxWidth)
+        doc.text(titleLines, margin, y); y += titleLines.length * 6
+
+        doc.setFontSize(10)
+        doc.setFont(undefined, 'normal')
+        if (item.description) {
+          const descLines = doc.splitTextToSize(`Description: ${item.description}`, maxWidth)
+          if (y + descLines.length * 5 > 270) { doc.addPage(); y = 20 }
+          doc.text(descLines, margin, y); y += descLines.length * 5
+        }
+        doc.text(`Assignee: ${item.assignee?.name || 'N/A'}`, margin, y); y += 5
+        doc.text(`Assigned By: ${item.assigner?.name || 'N/A'}`, margin, y); y += 5
+        if (item.start_date) { doc.text(`Start Date: ${item.start_date}`, margin, y); y += 5 }
+        if (item.due_date) { doc.text(`Due Date: ${item.due_date}`, margin, y); y += 5 }
+        doc.text(`Status: ${item.status}  |  Priority: ${item.priority}`, margin, y); y += 7
+        doc.setDrawColor(230); doc.line(margin, y, pageWidth - margin, y); y += 6
+      })
+    }
+
+    doc.save(`meeting-${id}-notes.pdf`)
+  }
+
+  const downloadMinutesPDF = () => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const margin = 14
+    const maxWidth = pageWidth - margin * 2
+    let y = 20
+
+    doc.setFontSize(18)
+    doc.setFont(undefined, 'bold')
+    doc.text('Meeting Minutes', margin, y)
+    y += 8
+
+    doc.setFontSize(10)
+    doc.setFont(undefined, 'normal')
+    doc.text(`Meeting: ${meeting?.title || ''}`, margin, y); y += 5
+    doc.text(`Date: ${meeting?.scheduled_at ? new Date(meeting.scheduled_at).toLocaleString() : ''}`, margin, y); y += 5
+    doc.text(`Location: ${meeting?.location || 'N/A'}`, margin, y); y += 8
+
+    doc.setDrawColor(200); doc.line(margin, y, pageWidth - margin, y); y += 6
+
+    const items = meeting?.agenda_items || []
+    if (items.length === 0) {
+      doc.setFontSize(12)
+      doc.text('No agenda items recorded.', margin, y)
+    } else {
+      items.forEach((item, idx) => {
+        if (y > 260) { doc.addPage(); y = 20 }
+        doc.setFontSize(13)
+        doc.setFont(undefined, 'bold')
+        const titleLines = doc.splitTextToSize(`${idx + 1}. ${item.title}`, maxWidth)
+        doc.text(titleLines, margin, y); y += titleLines.length * 6
+
+        doc.setFontSize(10)
+        doc.setFont(undefined, 'normal')
+        if (item.topic) {
+          doc.text(`Topic: ${item.topic}`, margin, y); y += 5
+        }
+        const minute = item.minutes?.[0]
+        if (minute?.content) {
+          const contentLines = doc.splitTextToSize(`Discussion: ${minute.content}`, maxWidth)
+          if (y + contentLines.length * 5 > 270) { doc.addPage(); y = 20 }
+          doc.text(contentLines, margin, y); y += contentLines.length * 5
+        }
+        if (minute?.decisions) {
+          const decisionLines = doc.splitTextToSize(`Decisions: ${minute.decisions}`, maxWidth)
+          if (y + decisionLines.length * 5 > 270) { doc.addPage(); y = 20 }
+          doc.text(decisionLines, margin, y); y += decisionLines.length * 5
+        }
+
+        const queue = item.speaking_queue || []
+        const completed = queue.filter(s => s.status === 'completed')
+        if (completed.length > 0) {
+          doc.setFont(undefined, 'italic')
+          doc.text('Speakers:', margin, y); y += 5
+          doc.setFont(undefined, 'normal')
+          completed.forEach(s => {
+            const speakerLines = doc.splitTextToSize(`  - ${s.name}${s.topic ? ` (${s.topic})` : ''}`, maxWidth)
+            if (y + speakerLines.length * 5 > 270) { doc.addPage(); y = 20 }
+            doc.text(speakerLines, margin, y); y += speakerLines.length * 5
+            ;(s.sub_topics || []).forEach(st => {
+              if (st.notes) {
+                const noteLines = doc.splitTextToSize(`    Notes: ${st.notes}`, maxWidth - 10)
+                if (y + noteLines.length * 5 > 270) { doc.addPage(); y = 20 }
+                doc.text(noteLines, margin + 10, y); y += noteLines.length * 5
+              }
+            })
+          })
+        }
+
+        y += 4
+        doc.setDrawColor(230); doc.line(margin, y, pageWidth - margin, y); y += 6
+      })
+    }
+
+    doc.save(`meeting-${id}-minutes.pdf`)
+  }
+
   const handleRemoveAgendaItem = async (agendaItemId) => {
     if (!confirm('Are you sure you want to remove this agenda item?')) return
     try {
@@ -867,7 +1039,7 @@ export default function MeetingDetail() {
       </div>
 
       <div className="flex gap-2 border-b border-[var(--border-color)]">
-        {['details', 'participants', 'agenda', 'minutes', 'live'].map((tab) => (
+        {['details', 'participants', 'agenda', 'minutes', 'live', 'notes'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1370,6 +1542,14 @@ export default function MeetingDetail() {
 
       {activeTab === 'minutes' && (
         <div className="space-y-6">
+          <div className="flex justify-end">
+            <button
+              onClick={downloadMinutesPDF}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+            >
+              <Download className="h-4 w-4" /> Download PDF
+            </button>
+          </div>
           {meeting.agenda_items?.length === 0 && (
             <div className="glass rounded-lg p-8 text-center">
               <p className="text-[var(--text-muted)]">No agenda items to record minutes for.</p>
@@ -1635,6 +1815,215 @@ export default function MeetingDetail() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {activeTab === 'live' && (
+        <button
+          onClick={() => setShowNoteModal(true)}
+          className="fixed bottom-8 right-8 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gold-600 text-white shadow-lg hover:bg-gold-500 transition-all hover:scale-110"
+          title="Add Note"
+        >
+          <MessageSquare className="h-6 w-6" />
+          {actionItems.length > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
+              {actionItems.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {activeTab === 'notes' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">Notes & Action Items</h3>
+            <div className="flex items-center gap-2">
+              {actionItems.length > 0 && (
+                <button
+                  onClick={downloadNotesPDF}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                >
+                  <Download className="h-4 w-4" /> PDF
+                </button>
+              )}
+              <button
+                onClick={() => setShowNoteModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-gold-600 px-4 py-2 text-sm font-medium text-white hover:bg-gold-500"
+              >
+                <Plus className="h-4 w-4" /> Add Note
+              </button>
+            </div>
+          </div>
+
+          {actionItems.length === 0 && (
+            <div className="glass rounded-lg p-8 text-center">
+              <p className="text-[var(--text-muted)]">No notes yet. Click "Add Note" to create one.</p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {actionItems.map((item) => (
+              <div key={item.id} className="glass rounded-lg p-4 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</h4>
+                    {item.description && (
+                      <p className="mt-1 text-sm text-[var(--text-muted)] whitespace-pre-wrap">{item.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteActionItem(item.id)}
+                    className="ml-2 rounded p-1 text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs text-[var(--text-muted)]">
+                  <span className="inline-flex items-center gap-1">
+                    <UserCheck className="h-3 w-3" />
+                    Assignee: <span className="font-medium text-[var(--text-secondary)]">{item.assignee?.name || 'Unknown'}</span>
+                  </span>
+                  <span>By: <span className="font-medium text-[var(--text-secondary)]">{item.assigner?.name || 'Unknown'}</span></span>
+                  {item.start_date && (
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> Start: {item.start_date}
+                    </span>
+                  )}
+                  {item.due_date && (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Due: {item.due_date}
+                    </span>
+                  )}
+                  <span className={`rounded px-2 py-0.5 font-medium ${
+                    item.status === 'completed' ? 'bg-green-500/10 text-green-600' :
+                    item.status === 'in_progress' ? 'bg-blue-500/10 text-blue-600' :
+                    item.status === 'overdue' ? 'bg-red-500/10 text-red-600' :
+                    'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                  }`}>
+                    {item.status}
+                  </span>
+                  {item.priority && (
+                    <span className={`rounded px-2 py-0.5 font-medium ${
+                      item.priority === 'urgent' ? 'bg-red-500/10 text-red-600' :
+                      item.priority === 'high' ? 'bg-orange-500/10 text-orange-600' :
+                      item.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-600' :
+                      'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                    }`}>
+                      {item.priority}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showNoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Add Note</h3>
+              <button
+                onClick={() => setShowNoteModal(false)}
+                className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Title *</label>
+                <input
+                  type="text"
+                  value={noteForm.title}
+                  onChange={(e) => setNoteForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Note title..."
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500/30"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Description</label>
+                <textarea
+                  value={noteForm.description}
+                  onChange={(e) => setNoteForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Describe the task..."
+                  rows={3}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500/30"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Assign To *</label>
+                <select
+                  value={noteForm.assignee_id}
+                  onChange={(e) => setNoteForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-gold-500 focus:outline-none"
+                >
+                  <option value="">Select user...</option>
+                  {meeting?.participants?.map(p => (
+                    <option key={p.user_id} value={p.user_id}>{p.user?.name || p.name}</option>
+                  ))}
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Start Date</label>
+                  <input
+                    type="date"
+                    value={noteForm.start_date}
+                    onChange={(e) => setNoteForm(prev => ({ ...prev, start_date: e.target.value }))}
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-gold-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Due Date</label>
+                  <input
+                    type="date"
+                    value={noteForm.due_date}
+                    onChange={(e) => setNoteForm(prev => ({ ...prev, due_date: e.target.value }))}
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-gold-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Priority</label>
+                <select
+                  value={noteForm.priority}
+                  onChange={(e) => setNoteForm(prev => ({ ...prev, priority: e.target.value }))}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-gold-500 focus:outline-none"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                onClick={() => setShowNoteModal(false)}
+                className="rounded-lg border border-[var(--border-color)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNote}
+                disabled={savingNote}
+                className="rounded-lg bg-gold-600 px-4 py-2 text-sm font-medium text-white hover:bg-gold-500 disabled:opacity-50"
+              >
+                {savingNote ? 'Saving...' : 'Submit'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

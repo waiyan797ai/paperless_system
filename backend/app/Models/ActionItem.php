@@ -22,10 +22,12 @@ class ActionItem extends Model
         'linked_request_id',
         'completed_at',
         'completion_notes',
+        'start_date',
     ];
 
     protected $casts = [
         'due_date' => 'date',
+        'start_date' => 'date',
         'completed_at' => 'datetime',
     ];
 

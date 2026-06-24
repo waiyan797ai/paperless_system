@@ -813,4 +813,67 @@ class MeetingController extends Controller
             'pending_action_items' => $myActionItems,
         ]);
     }
+
+    public function getActionItems($id)
+    {
+        $meeting = Meeting::findOrFail($id);
+        $items = ActionItem::where('meeting_id', $id)
+            ->with(['assignee:id,name', 'assigner:id,name'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $items]);
+    }
+
+    public function storeActionItem(Request $request, $id)
+    {
+        $meeting = Meeting::findOrFail($id);
+
+        $user = Auth::user();
+        $isParticipant = $meeting->participants()->where('user_id', $user->id)->exists();
+        $isAdmin = $user->hasPermission('meetings.edit') || $meeting->created_by === $user->id || $meeting->chairperson_id === $user->id || $meeting->secretary_id === $user->id;
+
+        if (!$isParticipant && !$isAdmin) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'title'       => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'assignee_id' => 'required|exists:users,id',
+            'start_date'  => 'nullable|date',
+            'due_date'    => 'nullable|date',
+            'priority'    => 'nullable|in:low,medium,high,urgent',
+        ]);
+
+        $item = ActionItem::create([
+            'meeting_id'  => $meeting->id,
+            'title'       => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'assignee_id' => $validated['assignee_id'],
+            'assigner_id' => $user->id,
+            'start_date'  => $validated['start_date'] ?? null,
+            'due_date'    => $validated['due_date'] ?? null,
+            'priority'    => $validated['priority'] ?? 'medium',
+            'status'      => 'pending',
+        ]);
+
+        return response()->json(['message' => 'Action item created', 'data' => $item->load(['assignee:id,name', 'assigner:id,name'])], 201);
+    }
+
+    public function destroyActionItem($id, $itemId)
+    {
+        $meeting = Meeting::findOrFail($id);
+        $item = ActionItem::where('meeting_id', $id)->findOrFail($itemId);
+
+        $user = Auth::user();
+        $canDelete = $user->hasPermission('meetings.edit') || $meeting->created_by === $user->id || $meeting->chairperson_id === $user->id || $item->assigner_id === $user->id;
+
+        if (!$canDelete) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $item->delete();
+        return response()->json(['message' => 'Deleted']);
+    }
 }

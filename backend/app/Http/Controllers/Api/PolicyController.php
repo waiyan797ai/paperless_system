@@ -28,6 +28,10 @@ class PolicyController extends Controller
             $query->where('policy_type_id', $request->policy_type_id);
         }
 
+        if ($request->filled('department_id')) {
+            $query->where('created_department_id', $request->department_id);
+        }
+
         if ($request->filled('status') && $request->user()->hasPermission('policies.manage')) {
             $query->where('status', $request->status);
         }

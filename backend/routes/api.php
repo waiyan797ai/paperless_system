@@ -104,6 +104,9 @@ Route::prefix('v1')->group(function () {
         Route::put('meetings/{meeting}/speaker-info', [MeetingController::class, 'updateSpeakerInfo']);
         Route::put('meetings/{meeting}/sub-topic-notes', [MeetingController::class, 'updateSubTopicNotes']);
         Route::post('meetings/{meeting}/sub-topic-files', [MeetingController::class, 'uploadSubTopicFile']);
+        Route::get('meetings/{meeting}/action-items', [MeetingController::class, 'getActionItems']);
+        Route::post('meetings/{meeting}/action-items', [MeetingController::class, 'storeActionItem']);
+        Route::delete('meetings/{meeting}/action-items/{item}', [MeetingController::class, 'destroyActionItem']);
 
         Route::apiResource('meeting-templates', MeetingTemplateController::class);
         Route::post('meetings/{meeting}/rsvp', [MeetingController::class, 'rsvp']);
